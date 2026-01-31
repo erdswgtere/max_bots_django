@@ -48,8 +48,8 @@ services:
              gunicorn max_project.wsgi:application --bind 0.0.0.0:8000 --workers 3"
     volumes:
       - ./max_project:/app/max_project
-      - static_volume:/app/staticfiles
-      - media_volume:/app/media
+      - static_volume:/app/max_project/staticfiles
+      - media_volume:/app/max_project/media
       - ./logs:/app/logs
     ports:
       - "8000:8000"
