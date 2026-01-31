@@ -161,7 +161,7 @@ def aggregate_weekly_statistics(session_id: int = None):
             
             results.append({
                 'session_id': session.id,
-                'phone_number': session.phone_number,
+                'device_id': session.device_id,
                 'total_messages': stats['total'] or 0,
                 'successful_messages': stats['successful'] or 0,
                 'failed_messages': stats['failed'] or 0

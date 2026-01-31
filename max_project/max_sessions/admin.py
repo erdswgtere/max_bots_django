@@ -21,14 +21,14 @@ from .tasks import send_scheduled_messages, test_session_connection
 
 @admin.register(MaxSession)
 class MaxSessionAdmin(admin.ModelAdmin):
-    list_display = ['phone_number', 'user', 'is_active', 'created_at', 'chats_count', 'success_rate_today', 'action_buttons']
+    list_display = ['device_id', 'user', 'is_active', 'created_at', 'chats_count', 'success_rate_today', 'action_buttons']
     list_filter = ['is_active', 'created_at']
-    search_fields = ['phone_number', 'user__username']
+    search_fields = ['device_id', 'user__username']
     readonly_fields = ['device_id', 'created_at', 'updated_at', 'user_agent_display']
     
     fieldsets = (
         ('Основная информация', {
-            'fields': ('user', 'phone_number', 'is_active')
+            'fields': ('user', 'is_active')
         }),
         ('Технические данные', {
             'fields': ('auth_token', 'device_id', 'user_agent_display'),
@@ -104,7 +104,7 @@ class MessageScheduleInline(admin.TabularInline):
 class ChatConfigAdmin(admin.ModelAdmin):
     list_display = ['chat_name', 'chat_id', 'session', 'is_active', 'schedules_count', 'messages_today']
     list_filter = ['is_active', 'session']
-    search_fields = ['chat_name', 'chat_id', 'session__phone_number']
+    search_fields = ['chat_name', 'chat_id', 'session__device_id']
     inlines = [MessageScheduleInline]
     
     fieldsets = (
@@ -143,7 +143,7 @@ class MessageScheduleAdmin(admin.ModelAdmin):
         'run_now_button'
     ]
     list_filter = ['is_active', 'frequency', 'session']
-    search_fields = ['chat_config__chat_name', 'session__phone_number']
+    search_fields = ['chat_config__chat_name', 'session__device_id']
     
     fieldsets = (
         ('Основная информация', {
@@ -221,7 +221,7 @@ class MessageScheduleAdmin(admin.ModelAdmin):
 class MessageLogAdmin(admin.ModelAdmin):
     list_display = ['sent_at', 'session', 'chat_config', 'status', 'message_preview', 'error_preview']
     list_filter = ['status', 'sent_at', 'session', 'chat_config']
-    search_fields = ['message_text', 'error_message', 'session__phone_number']
+    search_fields = ['message_text', 'error_message', 'session__device_id']
     readonly_fields = ['session', 'chat_config', 'message_text', 'status', 'error_message', 'sent_at', 'response_display']
     date_hierarchy = 'sent_at'
     
@@ -279,7 +279,7 @@ class DailyStatisticsAdmin(admin.ModelAdmin):
         'success_rate_display'
     ]
     list_filter = ['date', 'session']
-    search_fields = ['session__phone_number']
+    search_fields = ['session__device_id']
     readonly_fields = ['session', 'date', 'total_messages', 'successful_messages', 'failed_messages', 'success_rate_display']
     date_hierarchy = 'date'
     

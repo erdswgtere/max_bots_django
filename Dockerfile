@@ -28,7 +28,6 @@ FROM base as production
 
 # Copy project files
 COPY max_project /app/max_project/
-COPY manage.py /app/
 
 # Create logs directory
 RUN mkdir -p /app/logs
