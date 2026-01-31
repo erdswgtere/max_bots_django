@@ -6,10 +6,9 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 class MaxSession(models.Model):
     """Хранение сессий Max мессенджера"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='max_sessions')
-    phone_number = models.CharField(max_length=20, unique=True, verbose_name='Номер телефона')
-    auth_token = models.TextField(verbose_name='Токен авторизации')
-    user_agent_data = models.JSONField(verbose_name='Данные User-Agent')
-    device_id = models.CharField(max_length=100, verbose_name='ID устройства')
+    auth_token = models.TextField(verbose_name='Токен авторизации', blank=True, null=True)
+    user_agent_data = models.JSONField(verbose_name='Данные User-Agent', blank=True, null=True)
+    device_id = models.CharField(max_length=100, verbose_name='ID устройства', blank=True, null=True)
     is_active = models.BooleanField(default=True, verbose_name='Активна')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создана')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлена')
@@ -21,7 +20,7 @@ class MaxSession(models.Model):
         ordering = ['-created_at']
     
     def __str__(self):
-        return f"{self.phone_number} - {'Активна' if self.is_active else 'Неактивна'}"
+        return f"{self.device_id} - {'Активна' if self.is_active else 'Неактивна'}"
 
 
 class ChatConfig(models.Model):
@@ -40,7 +39,7 @@ class ChatConfig(models.Model):
         ordering = ['chat_name']
     
     def __str__(self):
-        return f"{self.chat_name or self.chat_id} ({self.session.phone_number})"
+        return f"{self.chat_name or self.chat_id} ({self.session.device_id})"
 
 
 class MessageSchedule(models.Model):
@@ -166,7 +165,7 @@ class DailyStatistics(models.Model):
         ]
     
     def __str__(self):
-        return f"{self.session.phone_number} - {self.date} - {self.successful_messages}/{self.total_messages}"
+        return f"{self.session.device_id} - {self.date} - {self.successful_messages}/{self.total_messages}"
     
     @property
     def success_rate(self):

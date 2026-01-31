@@ -20,34 +20,40 @@ class MaxSessionViewSet(viewsets.ModelViewSet):
     serializer_class = MaxSessionSerializer
 
     @decorators.action(detail=True, methods=['post'])
-    def authenticate_phone(self, request, pk=None):
-        """Начало процесса авторизации (отправка SMS)"""
+    def start_qr_auth(self, request, pk=None):
+        """
+        Начало авторизации по QR коду.
+        Возвращает ссылку на QR код и trackId для проверки.
+        """
         session = self.get_object()
-        phone = request.data.get('phone_number')
-        if not phone:
-            return Response({'error': 'phone_number is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
         service = MaxClientService(session)
         try:
-            token = run_async(service.authenticate(phone))
-            return Response({'token': token, 'message': 'SMS code sent'})
+            payload = run_async(service.start_qr_auth())
+            return Response({
+                'qrLink': payload['qrLink'],
+                'trackId': payload['trackId'],
+                'expiresAt': payload['expiresAt'],
+                'pollingInterval': payload['pollingInterval']
+            })
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @decorators.action(detail=True, methods=['post'])
-    def verify_code(self, request, pk=None):
-        """Верификация кода из SMS"""
+    def check_qr(self, request, pk=None):
+        """
+        Проверка статуса QR авторизации.
+        Принимает trackId. Если авторизация успешна, сохраняет токен.
+        """
         session = self.get_object()
-        token = request.data.get('token')
-        code = request.data.get('code')
+        track_id = request.data.get('trackId')
         
-        if not token or not code:
-            return Response({'error': 'token and code are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not track_id:
+            return Response({'error': 'trackId is required'}, status=status.HTTP_400_BAD_REQUEST)
             
         service = MaxClientService(session)
         try:
-            auth_token = run_async(service.verify_code(token, code))
-            return Response({'auth_token': auth_token, 'message': 'Authenticated successfully'})
+            result = run_async(service.check_qr_auth_status(track_id))
+            return Response(result)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

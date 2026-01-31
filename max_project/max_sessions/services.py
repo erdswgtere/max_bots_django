@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 class MaxClientService:
     def __init__(self, session: MaxSession):
         self.session = session
-        self.phone_number = session.phone_number
         self.auth_token = session.auth_token
         self.user_agent_data = session.user_agent_data
         self.device_id = session.device_id
@@ -38,12 +37,12 @@ class MaxClientService:
                 "userAgent": {
                     "deviceType": "WEB",
                     "locale": "ru",
-                    "osVersion": "Windows 10",
-                    "deviceName": "Chrome Browser",
-                    "headerUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-                    "deviceLocale": "ru",
-                    "appVersion": "27.5.10",
-                    "screen": "1920x1080 1.0x",
+                    "deviceLocale": "en",
+                    "osVersion": "Linux",
+                    "deviceName": "Chrome",
+                    "headerUserAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+                    "appVersion": "26.1.4",
+                    "screen": "1080x1920 1.0x",
                     "timezone": "Europe/Moscow"
                 },
                 "deviceId": device_id
@@ -68,7 +67,7 @@ class MaxClientService:
             self.session.save()
         
         try:
-            logger.info(f"[{self.phone_number}] Connecting to WebSocket...")
+            logger.info(f"[{self.device_id}] Connecting to WebSocket...")
             
             headers = {
                 "User-Agent": self.user_agent_data['payload']['userAgent']['headerUserAgent'],
@@ -87,14 +86,14 @@ class MaxClientService:
             )
             self.connection_active = True
             
-            logger.info(f"[{self.phone_number}] Sending user agent...")
+            logger.info(f"[{self.device_id}] Sending user agent...")
             await self.websocket.send(json.dumps(self.user_agent_data))
             
             response = await self.websocket.recv()
-            logger.info(f"[{self.phone_number}] User agent response: {response}")
+            logger.info(f"[{self.device_id}] User agent response: {response}")
             
         except Exception as e:
-            logger.error(f"[{self.phone_number}] Connection error: {e}")
+            logger.error(f"[{self.device_id}] Connection error: {e}")
             self.connection_active = False
             raise
     
@@ -102,96 +101,112 @@ class MaxClientService:
         """Закрытие WebSocket соединения"""
         if self.websocket:
             try:
-                logger.info(f"[{self.phone_number}] Closing WebSocket connection...")
+                logger.info(f"[{self.device_id}] Closing WebSocket connection...")
                 await self.websocket.close()
             except Exception as e:
                 if "no close frame received or sent" not in str(e):
-                    logger.warning(f"[{self.phone_number}] Warning during disconnect: {e}")
+                    logger.warning(f"[{self.device_id}] Warning during disconnect: {e}")
             finally:
                 self.websocket = None
                 self.connection_active = False
     
-    async def authenticate(self, phone_number: str) -> str:
+    async def start_qr_auth(self) -> Dict[str, Any]:
         """
-        Аутентификация пользователя по номеру телефона.
-        Возвращает auth_token и сохраняет в БД.
-        
-        Args:
-            phone_number: Номер телефона в формате +7XXXXXXXXXX
-            
-        Returns:
-            str: Auth token
+        Инициализация входа по QR коду.
+        Возвращает qrLink, trackId и expiresAt.
         """
-        self.phone_number = phone_number
         await self._connect()
         
-        auth_payload = {
+        # Opcode 288: Запрос QR кода
+        qr_request_payload = {
             "ver": 11,
             "cmd": 0,
-            "seq": 7,
-            "opcode": 17,
-            "payload": {
-                "phone": self.phone_number,
-                "type": "START_AUTH",
-                "language": "ru"
-            }
+            "seq": self._get_next_seq(),
+            "opcode": 288,
+            "payload": {}
         }
         
-        logger.info(f"[{self.phone_number}] Sending auth request...")
-        await self.websocket.send(json.dumps(auth_payload))
+        logger.info(f"[{self.device_id}] Requesting QR code...")
+        await self.websocket.send(json.dumps(qr_request_payload))
         
-        code_resp = json.loads(await self.websocket.recv())
-        logger.info(f"[{self.phone_number}] Auth response: {code_resp}")
+        response = await self.websocket.recv()
+        response_data = json.loads(response)
+        logger.info(f"[{self.device_id}] QR response: {response}")
         
-        if code_resp.get('payload', {}).get('error'):
-            error_msg = code_resp['payload']['error'] + ": " + code_resp['payload']['localizedMessage']
-            await self._disconnect()
-            raise ValueError(error_msg)
-        
-        token = code_resp['payload']['token']
-        logger.info(f"[{self.phone_number}] Auth token received. Waiting for verification code...")
-        
-        # В Django это должно быть через веб-интерфейс или API
-        # Здесь возвращаем token для последующей верификации
-        return token
-    
-    async def verify_code(self, token: str, code: str) -> str:
-        """
-        Верификация кода из SMS.
-        
-        Args:
-            token: Токен из authenticate()
-            code: Код из SMS
-            
-        Returns:
-            str: Auth token для последующих запросов
-        """
-        verify_payload = {
-            "ver": 11,
-            "cmd": 0,
-            "seq": 9,
-            "opcode": 18,
-            "payload": {
-                "token": token,
-                "verifyCode": code,
-                "authTokenType": "CHECK_CODE"
-            }
-        }
-        
-        logger.info(f"[{self.phone_number}] Sending verification...")
-        await self.websocket.send(json.dumps(verify_payload))
-        
-        token_resp = json.loads(await self.websocket.recv())
-        logger.info(f"[{self.phone_number}] Token response: {token_resp}")
-        
-        self.auth_token = token_resp['payload']['tokenAttrs']['LOGIN']['token']
-        
-        # Сохраняем в базу данных
-        self.session.auth_token = self.auth_token
-        self.session.save()
+        if response_data.get('payload', {}).get('error'):
+             raise ValueError(f"QR Error: {response_data['payload']['error']}")
+             
+        payload = response_data['payload']
+        # Пример ответа: {"pollingInterval": 5000, "qrLink": "...", "trackId": "...", ...}
         
         await self._disconnect()
-        return self.auth_token
+        return payload
+
+    async def check_qr_auth_status(self, track_id: str) -> Dict[str, Any]:
+        """
+        Проверка статуса авторизации по QR.
+        Если авторизация успешна (loginAvailable: true), завершает вход (Opcode 291).
+        """
+        await self._connect()
+        
+        # Opcode 289: Проверка статуса
+        check_payload = {
+            "ver": 11,
+            "cmd": 0,
+            "seq": self._get_next_seq(),
+            "opcode": 289,
+            "payload": {
+                "trackId": track_id
+            }
+        }
+        
+        logger.info(f"[{self.device_id}] Checking QR status for {track_id}...")
+        await self.websocket.send(json.dumps(check_payload))
+        
+        response = await self.websocket.recv()
+        response_data = json.loads(response)
+        logger.info(f"[{self.device_id}] Status response: {response}")
+        
+        status_payload = response_data.get('payload', {}).get('status', {})
+        
+        if status_payload.get('loginAvailable'):
+            # Opcode 291: Завершение входа (Login)
+            logger.info(f"[{self.device_id}] Login available! Finalizing auth...")
+            
+            login_payload = {
+                "ver": 11,
+                "cmd": 0,
+                "seq": self._get_next_seq(),
+                "opcode": 291,
+                "payload": {
+                    "trackId": track_id
+                }
+            }
+            
+            await self.websocket.send(json.dumps(login_payload))
+            
+            login_response = await self.websocket.recv()
+            login_data = json.loads(login_response)
+            logger.info(f"[{self.device_id}] Login response: {login_data}")
+            
+            # Извлекаем токен
+            # {"payload":{"tokenAttrs":{"LOGIN":{"token":"..."}}}}
+            try:
+                token = login_data['payload']['tokenAttrs']['LOGIN']['token']
+                self.auth_token = token
+                self.session.auth_token = token
+                self.session.save()
+                
+                await self._disconnect()
+                return {"status": "success", "token": token}
+                
+            except KeyError:
+                await self._disconnect()
+                return {"status": "error", "message": "Token not found in login response", "details": login_data}
+        
+        # Если еще не залогинились
+        await self._disconnect()
+        return {"status": "waiting", "details": status_payload}
     
     async def establish_online_session(self):
         """Установка онлайн сессии (sync chats)"""
@@ -217,11 +232,11 @@ class MaxClientService:
             }
         }
         
-        logger.info(f"[{self.phone_number}] Establishing online session...")
+        logger.info(f"[{self.device_id}] Establishing online session...")
         await self.websocket.send(json.dumps(sync_payload))
         
         response = await self.websocket.recv()
-        logger.info(f"[{self.phone_number}] Online session established")
+        logger.info(f"[{self.device_id}] Online session established")
         
         return response
     
@@ -261,13 +276,13 @@ class MaxClientService:
                     "ver": 11
                 }
                 
-                logger.info(f"[{self.phone_number}] Sending message to chat {chat_id}")
+                logger.info(f"[{self.device_id}] Sending message to chat {chat_id}")
                 await self.websocket.send(json.dumps(message_payload))
                 
                 response = await self.websocket.recv()
                 response_data = json.loads(response)
                 
-                logger.info(f"[{self.phone_number}] Message response: {response}")
+                logger.info(f"[{self.device_id}] Message response: {response}")
                 
                 if response_data.get('payload', {}).get('error'):
                     error_msg = response_data['payload']['error']
@@ -298,7 +313,7 @@ class MaxClientService:
                 return response_data
                 
             except Exception as e:
-                logger.error(f"[{self.phone_number}] Error in send_message (attempt {attempt + 1}): {e}")
+                logger.error(f"[{self.device_id}] Error in send_message (attempt {attempt + 1}): {e}")
                 self.connection_active = False
                 
                 if attempt == retries - 1:
