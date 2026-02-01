@@ -82,7 +82,7 @@ class MaxClientService:
             
             self.websocket = await websockets.connect(
                 "wss://ws-api.oneme.ru/websocket",
-                extra_headers=headers
+                additional_headers=headers
             )
             self.connection_active = True
             
