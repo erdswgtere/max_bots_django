@@ -18,6 +18,11 @@ docker-compose up -d --build
 ### 3. Обязательные действия после запуска
 Эти команды нужно выполнить один раз при первом развертывании или после изменения моделей данных.
 
+**Создание файлов миграций (если были изменения в моделях):**
+```bash
+docker-compose exec web python max_project/manage.py makemigrations max_sessions
+```
+
 **Применение миграций (создание таблиц в БД):**
 ```bash
 docker-compose exec web python max_project/manage.py migrate

@@ -66,12 +66,62 @@ class MaxSessionAdmin(admin.ModelAdmin):
     
     def action_buttons(self, obj):
         """Кнопки действий"""
-        return format_html(
-            '<a class="button" href="{}">Тест подключения</a>',
+        buttons = []
+        
+        # Кнопка теста подключения
+        buttons.append(format_html(
+            '<a class="button" href="{}">Тест связи</a>',
             reverse('admin:max_sessions_maxsession_test', args=[obj.pk])
-        )
+        ))
+        
+        # Кнопка входа через QR
+        if not obj.auth_token:
+            buttons.append(format_html(
+                '<a class="button" style="background-color: #417690; color: white; margin-left: 5px;" href="{}">Войти через QR</a>',
+                reverse('admin:max_sessions_maxsession_qr', args=[obj.pk])
+            ))
+            
+        return mark_safe("&nbsp;&nbsp;".join(buttons))
     action_buttons.short_description = 'Действия'
     
+    def get_urls(self):
+        """Добавление кастомных URL для админки"""
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path('<path:object_id>/test/', self.admin_site.admin_view(self.test_connection_view), name='max_sessions_maxsession_test'),
+            path('<path:object_id>/qr/', self.admin_site.admin_view(self.qr_auth_view), name='max_sessions_maxsession_qr'),
+        ]
+        return custom_urls + urls
+    
+    def test_connection_view(self, request, object_id):
+        """Вью для запуска теста подключения"""
+        from django.shortcuts import redirect
+        test_session_connection.delay(object_id)
+        self.message_user(request, "Тест подключения запущен в фоне. Проверьте логи сообщений через минуту.")
+        return redirect(reverse('admin:max_sessions_maxsession_changelist'))
+        
+    def qr_auth_view(self, request, object_id):
+        """Вью для отображения QR кода и процесса входа"""
+        from django.shortcuts import render
+        from .services import MaxClientService, run_async
+        
+        session = self.get_object(request, object_id)
+        service = MaxClientService(session)
+        
+        try:
+            payload = run_async(service.start_qr_auth())
+            context = {
+                **self.admin_site.each_context(request),
+                'session': session,
+                'qr_data': payload,
+                'title': f'Вход через QR: {session.device_id or "Новая сессия"}'
+            }
+            return render(request, 'admin/max_sessions/qr_auth.html', context)
+        except Exception as e:
+            self.message_user(request, f"Ошибка при получении QR кода: {str(e)}", level='error')
+            return redirect(reverse('admin:max_sessions_maxsession_changelist'))
+
     def activate_sessions(self, request, queryset):
         """Активировать выбранные сессии"""
         count = queryset.update(is_active=True)

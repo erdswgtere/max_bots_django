@@ -1,0 +1,129 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+    .qr-container {
+        text-align: center;
+        background: white;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        margin: 20px auto;
+        max-width: 500px;
+    }
+
+    .qr-image {
+        width: 300px;
+        height: 300px;
+        margin-bottom: 20px;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 10px 20px;
+        border-radius: 20px;
+        font-weight: bold;
+        margin-top: 20px;
+    }
+
+    .status-waiting {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .status-success {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-error {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .timer {
+        font-size: 0.9em;
+        color: #666;
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label='max_sessions' %}">Max_Sessions</a>
+    &rsaquo; <a href="{% url 'admin:max_sessions_maxsession_changelist' %}">Max сессии</a>
+    &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <div class="qr-container">
+        <h1>Отсканируйте QR-код в мессенджере Max</h1>
+        <p>Для активации сессии откройте Max на вашем телефоне -> Настройки -> Связанные устройства -> Привязать
+            устройство</p>
+
+        <div id="qr-wrapper">
+            <img src="{{ qr_data.qrLink }}" alt="QR Code" class="qr-image">
+        </div>
+
+        <div id="status" class="status-badge status-waiting">
+            Ожидание сканирования...
+        </div>
+
+        <div class="timer" id="timer">
+            Действует до: {{ qr_data.expiresAt }}
+        </div>
+
+        <div style="margin-top: 30px;">
+            <a href="{% url 'admin:max_sessions_maxsession_changelist' %}" class="button secondary">Отмена</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    const trackId = "{{ qr_data.trackId }}";
+    const sessionId = "{{ session.id }}";
+    const pollingInterval = Number("{{ qr_data.pollingInterval|default:2000 }}");
+    const checkUrl = `/api/sessions/${sessionId}/check_qr/`;
+
+    let intervalId;
+
+    async function checkStatus() {
+        try {
+            const response = await fetch(checkUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ trackId: trackId })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                document.getElementById('status').innerText = 'Успешно авторизовано! Перенаправление...';
+                document.getElementById('status').className = 'status-badge status-success';
+                clearInterval(intervalId);
+                setTimeout(() => {
+                    window.location.href = "{% url 'admin:max_sessions_maxsession_changelist' %}";
+                }, 2000);
+            } else if (data.status === 'error') {
+                if (data.message !== 'QR_CODE_WAITING') {
+                    document.getElementById('status').innerText = 'Ошибка: ' + (data.message || 'Неизвестная ошибка');
+                    document.getElementById('status').className = 'status-badge status-error';
+                    clearInterval(intervalId);
+                }
+            }
+        } catch (error) {
+            console.error('Polling error:', error);
+        }
+    }
+
+    intervalId = setInterval(checkStatus, pollingInterval);
+</script>
+{% endblock %}
