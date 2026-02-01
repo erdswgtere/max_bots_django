@@ -64,7 +64,7 @@ class MaxClientService:
         if not self.user_agent_data:
             self.user_agent_data = self._generate_user_agent(self.device_id)
             self.session.user_agent_data = self.user_agent_data
-            self.session.save()
+            await self.session.asave()
         
         try:
             logger.info(f"[{self.device_id}] Connecting to WebSocket...")
@@ -195,7 +195,7 @@ class MaxClientService:
                 token = login_data['payload']['tokenAttrs']['LOGIN']['token']
                 self.auth_token = token
                 self.session.auth_token = token
-                self.session.save()
+                await self.session.asave()
                 
                 await self._disconnect()
                 return {"status": "success", "token": token}
@@ -289,7 +289,7 @@ class MaxClientService:
                     
                     # Логирование ошибки в БД
                     if chat_config:
-                        MessageLog.objects.create(
+                        await MessageLog.objects.acreate(
                             session=self.session,
                             chat_config=chat_config,
                             message_text=message_text,
@@ -302,7 +302,7 @@ class MaxClientService:
                 
                 # Логирование успеха в БД
                 if chat_config:
-                    MessageLog.objects.create(
+                    await MessageLog.objects.acreate(
                         session=self.session,
                         chat_config=chat_config,
                         message_text=message_text,
@@ -319,7 +319,7 @@ class MaxClientService:
                 if attempt == retries - 1:
                     # Последняя попытка - логируем ошибку
                     if chat_config:
-                        MessageLog.objects.create(
+                        await MessageLog.objects.acreate(
                             session=self.session,
                             chat_config=chat_config,
                             message_text=message_text,
