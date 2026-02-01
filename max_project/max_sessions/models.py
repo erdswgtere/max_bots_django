@@ -27,7 +27,7 @@ class MaxSession(models.Model):
 class ChatConfig(models.Model):
     """Конфигурация чатов для отправки сообщений"""
     session = models.ForeignKey(MaxSession, on_delete=models.CASCADE, related_name='chats')
-    chat_id = models.CharField(max_length=100, verbose_name='ID чата')
+    chat_id = models.CharField(max_length=100, verbose_name='ID чата') ## исправить длину чата
     chat_name = models.CharField(max_length=255, blank=True, verbose_name='Название чата')
     is_active = models.BooleanField(default=True, verbose_name='Активен')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создан')
