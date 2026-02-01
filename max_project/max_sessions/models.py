@@ -6,6 +6,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 class MaxSession(models.Model):
     """Хранение сессий Max мессенджера"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='max_sessions')
+    name = models.CharField(max_length=255, verbose_name='Название сессии', blank=True, null=True)
     auth_token = models.TextField(verbose_name='Токен авторизации', blank=True, null=True)
     user_agent_data = models.JSONField(verbose_name='Данные User-Agent', blank=True, null=True)
     device_id = models.CharField(max_length=100, verbose_name='ID устройства', blank=True, null=True)
@@ -15,12 +16,12 @@ class MaxSession(models.Model):
     
     class Meta:
         db_table = 'max_sessions'
-        verbose_name = 'Max сессия'
-        verbose_name_plural = 'Max сессии'
+        verbose_name = 'Сессия в Max'
+        verbose_name_plural = 'Сессии в Max'
         ordering = ['-created_at']
     
     def __str__(self):
-        return f"{self.device_id} - {'Активна' if self.is_active else 'Неактивна'}"
+        return f"{self.name or self.device_id or 'Новая сессия'} - {'Активна' if self.is_active else 'Неактивна'}"
 
 
 class ChatConfig(models.Model):

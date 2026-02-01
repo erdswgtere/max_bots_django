@@ -24,14 +24,14 @@ from .tasks import send_scheduled_messages, test_session_connection
 
 @admin.register(MaxSession)
 class MaxSessionAdmin(admin.ModelAdmin):
-    list_display = ['device_id', 'user', 'is_active', 'created_at', 'chats_count', 'success_rate_today', 'action_buttons']
+    list_display = ['name', 'device_id', 'user', 'is_active', 'created_at', 'chats_count', 'success_rate_today', 'action_buttons']
     list_filter = ['is_active', 'created_at']
-    search_fields = ['device_id', 'user__username']
+    search_fields = ['name', 'device_id', 'user__username']
     readonly_fields = ['device_id', 'created_at', 'updated_at', 'user_agent_display']
     
     fieldsets = (
         ('Основная информация', {
-            'fields': ('user', 'is_active')
+            'fields': ('name', 'user', 'is_active')
         }),
         ('Технические данные', {
             'fields': ('auth_token', 'device_id', 'user_agent_display'),
@@ -162,6 +162,16 @@ class ChatConfigAdmin(admin.ModelAdmin):
             'fields': ('session', 'chat_id', 'chat_name', 'is_active')
         }),
     )
+    
+    def save_formset(self, request, form, formset, change):
+        """Автоматическое заполнение сессии для расписаний"""
+        instances = formset.save(commit=False)
+        for instance in instances:
+            if isinstance(instance, MessageSchedule):
+                # Наследуем сессию от родительской конфигурации чата
+                instance.session = instance.chat_config.session
+            instance.save()
+        formset.save_m2m()
     
     def schedules_count(self, obj):
         """Количество активных расписаний"""
