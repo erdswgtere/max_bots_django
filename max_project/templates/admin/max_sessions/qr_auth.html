@@ -60,6 +60,7 @@
 {% endblock %}
 
 {% block content %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <div id="content-main">
     <div class="qr-container">
         <h1>Отсканируйте QR-код в мессенджере Max</h1>
@@ -67,7 +68,17 @@
             устройство</p>
 
         <div id="qr-wrapper">
-            <img src="{{ qr_data.qrLink }}" alt="QR Code" class="qr-image">
+            {% if qr_data.qrLink %}
+            <img src="{{ qr_data.qrLink }}" alt="QR Code" class="qr-image" id="qr-img" onerror="handleQrError()">
+            <div id="qr-fallback" style="display:none; margin: 20px 0;">
+                <div id="qrcode-canvas"></div>
+                <p class="timer">Используется альтернативный генератор QR</p>
+            </div>
+            {% else %}
+            <div class="status-badge status-error">
+                QR-ссылка не получена от сервера
+            </div>
+            {% endif %}
         </div>
 
         <div id="status" class="status-badge status-waiting">
@@ -76,6 +87,13 @@
 
         <div class="timer" id="timer">
             Действует до: {{ qr_data.expiresAt }}
+        </div>
+
+        <div id="debug-info"
+            style="margin-top: 20px; font-size: 10px; color: #999; text-align: left; padding: 10px; border: 1px dashed #ccc;">
+            <strong>Debug info:</strong><br>
+            Track ID: {{ qr_data.trackId }}<br>
+            QR Link: <span id="debug-qr-link">{{ qr_data.qrLink }}</span>
         </div>
 
         <div style="margin-top: 30px;">
@@ -91,6 +109,19 @@
     const checkUrl = `/api/sessions/${sessionId}/check_qr/`;
 
     let intervalId;
+
+    function handleQrError() {
+        console.log("QR Image load failed, using fallback generator");
+        const qrLink = document.getElementById('debug-qr-link').innerText;
+        document.getElementById('qr-img').style.display = 'none';
+        document.getElementById('qr-fallback').style.display = 'block';
+
+        new QRCode(document.getElementById("qrcode-canvas"), {
+            text: qrLink,
+            width: 300,
+            height: 300
+        });
+    }
 
     async function checkStatus() {
         try {

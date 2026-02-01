@@ -19,7 +19,12 @@ class MaxClientService:
         self.session = session
         self.auth_token = session.auth_token
         self.user_agent_data = session.user_agent_data
+        
+        # Initialize device_id from session or from user_agent_data
         self.device_id = session.device_id
+        if not self.device_id and self.user_agent_data:
+            self.device_id = self.user_agent_data.get('payload', {}).get('deviceId')
+            
         self.websocket = None
         self.seq_counter = 100
         self.connection_active = False
@@ -62,9 +67,19 @@ class MaxClientService:
         Переписанная async версия из main.py.
         """
         if not self.user_agent_data:
+            if not self.device_id:
+                self.device_id = str(uuid4())
+                self.session.device_id = self.device_id
+            
             self.user_agent_data = self._generate_user_agent(self.device_id)
             self.session.user_agent_data = self.user_agent_data
             await self.session.asave()
+        elif not self.device_id:
+            # If we have user_agent_data but no device_id in model field, extract and save it
+            self.device_id = self.user_agent_data.get('payload', {}).get('deviceId')
+            if self.device_id:
+                self.session.device_id = self.device_id
+                await self.session.asave()
         
         try:
             logger.info(f"[{self.device_id}] Connecting to WebSocket...")
@@ -138,6 +153,8 @@ class MaxClientService:
              
         payload = response_data['payload']
         # Пример ответа: {"pollingInterval": 5000, "qrLink": "...", "trackId": "...", ...}
+        logger.info(f"[{self.device_id}] QR Link received: {payload.get('qrLink')}")
+        logger.info(f"[{self.device_id}] Track ID received: {payload.get('trackId')}")
         
         await self._disconnect()
         return payload
