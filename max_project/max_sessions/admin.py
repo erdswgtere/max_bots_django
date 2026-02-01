@@ -276,6 +276,20 @@ class MessageScheduleAdmin(admin.ModelAdmin):
         self.message_user(request, f'Деактивировано расписаний: {count}')
     deactivate_schedules.short_description = 'Деактивировать'
 
+    def get_urls(self):
+        """Добавление кастомных URL для админки"""
+        urls = super().get_urls()
+        custom_urls = [
+            path('<path:object_id>/run/', self.admin_site.admin_view(self.run_schedule_view), name='max_sessions_messageschedule_run'),
+        ]
+        return custom_urls + urls
+
+    def run_schedule_view(self, request, object_id):
+        """Вью для мгновенного запуска расписания"""
+        send_scheduled_messages.delay(object_id)
+        self.message_user(request, "Задача планировщика запущена немедленно.")
+        return redirect(reverse('admin:max_sessions_messageschedule_changelist'))
+
 
 @admin.register(MessageLog)
 class MessageLogAdmin(admin.ModelAdmin):
