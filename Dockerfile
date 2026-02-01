@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for Django Max Bots
 
 # Stage 1: Base image with dependencies
-FROM python:3.12 as base
+FROM python:3.12-slim as base
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
