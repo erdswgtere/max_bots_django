@@ -3,11 +3,14 @@ Django admin configuration for max_sessions app.
 Provides user-friendly interface for managing sessions, schedules, and viewing statistics.
 """
 from django.contrib import admin
+from django.shortcuts import redirect, render
 from django.utils.html import format_html
-from django.urls import reverse
+from django.urls import reverse, path
 from django.utils.safestring import mark_safe
 from django.db.models import Count, Sum
 from datetime import date, timedelta
+from asgiref.sync import async_to_sync
+from .services import MaxClientService
 
 from .models import (
     MaxSession,
@@ -86,7 +89,6 @@ class MaxSessionAdmin(admin.ModelAdmin):
     
     def get_urls(self):
         """Добавление кастомных URL для админки"""
-        from django.urls import path
         urls = super().get_urls()
         custom_urls = [
             path('<path:object_id>/test/', self.admin_site.admin_view(self.test_connection_view), name='max_sessions_maxsession_test'),
@@ -96,21 +98,19 @@ class MaxSessionAdmin(admin.ModelAdmin):
     
     def test_connection_view(self, request, object_id):
         """Вью для запуска теста подключения"""
-        from django.shortcuts import redirect
         test_session_connection.delay(object_id)
         self.message_user(request, "Тест подключения запущен в фоне. Проверьте логи сообщений через минуту.")
         return redirect(reverse('admin:max_sessions_maxsession_changelist'))
         
     def qr_auth_view(self, request, object_id):
         """Вью для отображения QR кода и процесса входа"""
-        from django.shortcuts import render
-        from .services import MaxClientService, run_async
         
         session = self.get_object(request, object_id)
         service = MaxClientService(session)
         
         try:
-            payload = run_async(service.start_qr_auth())
+            # Используем async_to_sync для вызова асинхронного метода из синхронного контекста
+            payload = async_to_sync(service.start_qr_auth)()
             context = {
                 **self.admin_site.each_context(request),
                 'session': session,

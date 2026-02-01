@@ -335,15 +335,4 @@ class MaxClientService:
         await self._disconnect()
 
 
-# Вспомогательные функции для синхронного использования в Django views
-def run_async(coro):
-    """
-    Запуск асинхронной функции в синхронном контексте Django.
-    Используется в views, где async/await не поддерживается.
-    """
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+

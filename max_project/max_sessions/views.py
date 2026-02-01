@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Sum
+from asgiref.sync import async_to_sync
 
 from .models import MaxSession, ChatConfig, MessageSchedule, MessageLog, DailyStatistics
 from .serializers import (
@@ -13,7 +14,7 @@ from .serializers import (
     DailyStatisticsSerializer
 )
 from .tasks import send_scheduled_messages, test_session_connection
-from .services import MaxClientService, run_async
+from .services import MaxClientService
 
 class MaxSessionViewSet(viewsets.ModelViewSet):
     queryset = MaxSession.objects.all()
@@ -28,7 +29,7 @@ class MaxSessionViewSet(viewsets.ModelViewSet):
         session = self.get_object()
         service = MaxClientService(session)
         try:
-            payload = run_async(service.start_qr_auth())
+            payload = async_to_sync(service.start_qr_auth)()
             return Response({
                 'qrLink': payload['qrLink'],
                 'trackId': payload['trackId'],
@@ -52,7 +53,7 @@ class MaxSessionViewSet(viewsets.ModelViewSet):
             
         service = MaxClientService(session)
         try:
-            result = run_async(service.check_qr_auth_status(track_id))
+            result = async_to_sync(service.check_qr_auth_status)(track_id)
             return Response(result)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
