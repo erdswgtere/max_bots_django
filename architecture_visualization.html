@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Архитектура Max Bots Django</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #0f172a;
+            color: #f8fafc;
+            margin: 0;
+            padding: 2rem;
+            line-height: 1.6;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: #38bdf8;
+            border-bottom: 2px solid #1e293b;
+            padding-bottom: 0.5rem;
+            font-size: 2.5rem;
+            text-align: center;
+            width: 100%;
+        }
+
+        h3 {
+            font-size: 1.8rem;
+            margin-top: 0.5rem;
+            color: #e2e8f0;
+            text-align: center;
+        }
+
+        .card {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 3rem;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .mermaid {
+            background: #1e293b;
+            padding: 2rem;
+            border-radius: 12px;
+            margin: 1.5rem auto;
+            border: 1px solid #475569;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+            display: flex;
+            justify-content: center;
+        }
+
+        .highlight {
+            color: #f472b6;
+            font-weight: bold;
+        }
+
+        .sync {
+            color: #fbbf24;
+            font-weight: bold;
+        }
+
+        .async {
+            color: #4ade80;
+            font-weight: bold;
+        }
+
+        code {
+            background: #0f172a;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.95em;
+        }
+
+        .func-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+
+        p {
+            font-size: 1.1rem;
+            color: #cbd5e1;
+            text-align: center;
+        }
+
+        ul {
+            text-align: left;
+            display: inline-block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Архитектурный гид: Max Bots Django</h1>
+
+        <!-- SECTION 1: OVERVIEW -->
+        <div class="card">
+            <h3>1. Матрица функций (Sync vs Async)</h3>
+            <div class="func-list">
+                <div>
+                    <h4 class="sync">Синхронная логика (Django / Celery)</h4>
+                    <p style="text-align: left; font-size: 0.9rem;">Работает в классическом блокирующем режиме.
+                        Управляет состоянием и БД.</p>
+                    <ul>
+                        <li><code>send_scheduled_messages()</code> — старт задачи.</li>
+                        <li><code>update_statistics()</code> — расчет KPI.</li>
+                        <li><code>finish_task_run()</code> — завершение сессии.</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="async">Асинхронная логика (WebSocket / Service)</h4>
+                    <p style="text-align: left; font-size: 0.9rem;">Работает в неблокирующем Event Loop. Управляет
+                        сетевыми соединениями.</p>
+                    <ul>
+                        <li><code>MaxClientService._connect()</code> — хендшейк.</li>
+                        <li><code>MaxClientService.send_message()</code> — отправка.</li>
+                        <li><code>check_qr_auth_status()</code> — авторизация.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 2: TIMELINE CAPSULE -->
+        <div class="card">
+            <h3>2. Временная шкала (Концепция "Капсулы")</h3>
+            <p>Асинхронный код вклинивается в синхронный поток Celery как защищенная капсула через
+                <code>asyncio.run()</code>.</p>
+            <div class="mermaid">
+                graph TD
+                subgraph Sync_Zone ["СИНХРОННАЯ ЛИНИЯ CELERY"]
+                Start(["Старт задачи"]) --> Lock["Redis Lock"]
+                Lock --> GetDB["ORM: Загрузка данных"]
+                GetDB --> CreateRun["ORM: TaskRun create"]
+                end
+
+                subgraph Async_Capsule ["АСИНХРОННАЯ КАПСУЛА (Event Loop)"]
+                direction TB
+                OpenLoop["asyncio.run()"] --> Connect["WebSocket: Connect"]
+
+                Connect --> MainFlow["ПОТОК А: Бизнес-логика"]
+                Connect --> BgFlow["ПОТОК Б: Фоновые задачи"]
+
+                subgraph Concurrent ["Параллельное выполнение"]
+                MainFlow --> Loop["ЦИКЛ: Send & Await"]
+                BgFlow --> Pings["Heartbeats / Listen"]
+                end
+
+                Loop --> Disconnect["WS: Disconnect"]
+                Disconnect --> CloseLoop["Конец цикла"]
+                end
+
+                CreateRun -->|Инъекция| OpenLoop
+                CloseLoop -->|Возврат| FinishRun["ORM: TaskRun finish"]
+
+                subgraph Sync_Zone_End ["СИНХРОННАЯ ЛИНИЯ (ФИНАЛ)"]
+                FinishRun --> Unlock["Redis Unlock"]
+                Unlock --> End([Конец])
+                end
+
+                style Async_Capsule fill:#0f172a,stroke:#4ade80,stroke-width:3px,color:#fff
+                style Sync_Zone fill:#1e293b,stroke:#fbbf24,stroke-width:2px,color:#fff
+                style Sync_Zone_End fill:#1e293b,stroke:#fbbf24,stroke-width:2px,color:#fff
+                style Concurrent fill:#1e293b,stroke:#4ade80,stroke-dasharray: 5 5
+            </div>
+        </div>
+
+        <!-- SECTION 3: QR AUTH FLOW -->
+        <div class="card">
+            <h3>3. Асинхронная Авторизация (QR Code)</h3>
+            <p>Процесс входа по QR — динамический асинхронный процесс, запущенный из Views.</p>
+            <div class="mermaid">
+                sequenceDiagram
+                participant U as User (Admin)
+                participant V as View (Sync)
+                participant SVC as MaxClientService (Async)
+                participant WS as Max API (WebSocket)
+
+                U->>V: Нажимает "Вход по QR"
+                V->>SVC: asyncio.run(start_qr_auth)
+                SVC->>WS: Request QR Link
+                WS-->>SVC: qrLink + trackId
+                SVC-->>V: Return credentials
+                V-->>U: Показ QR кода
+
+                loop Поллинг (JavaScript)
+                U->>V: check_status(trackId)
+                V->>SVC: asyncio.run(check_qr_auth_status)
+                SVC->>WS: Opcode 290 (Ping status)
+                WS-->>SVC: LoginAvailable: True/False
+                SVC-->>V: Status update
+                end
+            </div>
+        </div>
+
+        <!-- SECTION 4: DATA FLOW -->
+        <div class="card">
+            <h3>4. Потоки данных и контексты (Thread Bridge)</h3>
+            <p>Как данные "прыгают" между асинхронным сокетом и синхронной базой данных.</p>
+            <div class="mermaid">
+                sequenceDiagram
+                box rgb(15, 23, 42) "Async World (Event Loop)"
+                participant AR as asyncio.run
+                participant SMA as _send_messages_async
+                participant SVC as MaxClientService
+                end
+
+                box rgb(15, 23, 42) "Network"
+                participant WS as WebSocket API
+                end
+
+                box rgb(30, 41, 59) "Sync World (Django Thread)"
+                participant DB as Database (Postgres)
+                end
+
+                AR->>SMA: call
+                SMA->>SVC: await send_message()
+                SVC->>WS: SEND Frame
+                WS-->>SVC: OK response
+
+                note over SVC,DB: sync_to_async: Мост в БД
+                SVC->>DB: execute MessageLog.create()
+                DB-->>SVC: success
+
+                note over SVC,DB: не блокирует Event Loop
+                SVC->>DB: update DailyStatistics()
+                DB-->>SVC: success
+            </div>
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                darkMode: true,
+                background: '#1e293b',
+                primaryColor: '#38bdf8',
+                primaryTextColor: '#f8fafc',
+                primaryBorderColor: '#38bdf8',
+                lineColor: '#cbd5e1',
+                secondaryColor: '#334155',
+                tertiaryColor: '#1e293b',
+                mainBkg: '#0f172a',
+                nodeBorder: '#38bdf8',
+                clusterBkg: '#1e293b',
+                clusterBorder: '#475569',
+                defaultLinkColor: '#94a3b8',
+                titleColor: '#38bdf8',
+                edgeLabelBackground: '#334155',
+                nodeTextColor: '#f8fafc',
+                labelTextColor: '#f8fafc',
+                actorTextColor: '#f8fafc',
+                actorBkg: '#334155',
+                actorBorder: '#38bdf8',
+                signalTextColor: '#f8fafc',
+                signalColor: '#cbd5e1',
+                noteBkgColor: '#fbbf24',
+                noteTextColor: '#0f172a',
+                loopTextColor: '#f8fafc'
+            },
+            sequence: {
+                showSequenceNumbers: true,
+                actorMargin: 100,
+                boxMargin: 15,
+                useMaxWidth: true
+            }
+        });
+    </script>
+</body>
+
+</html>

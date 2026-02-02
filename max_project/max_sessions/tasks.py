@@ -12,6 +12,7 @@ from django.db.models import Sum
 from celery import shared_task
 from django.utils import timezone
 from asgiref.sync import sync_to_async
+from django.core.cache import cache
 
 from .models import MessageSchedule, MessageLog, DailyStatistics, MaxSession, TaskRun
 from .services import MaxClientService
@@ -36,7 +37,6 @@ def send_scheduled_messages(self, schedule_id: int):
             return
         
         # Redis Lock to prevent concurrent execution
-        from django.core.cache import cache
         lock_id = f"lock:schedule:{schedule_id}"
         # Set lock for 10 minutes (long enough for message sending, cleanup deletes it)
         is_locked = cache.add(lock_id, "true", 600)
