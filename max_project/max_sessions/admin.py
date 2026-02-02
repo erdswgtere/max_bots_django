@@ -187,40 +187,41 @@ class MessageScheduleInline(admin.TabularInline):
     """Inline для расписаний в ChatConfig"""
     model = MessageSchedule
     extra = 0
-    fields = ['frequency', 'scheduled_time', 'is_active', 'min_messages', 'max_messages']
+    fields = ['session', 'frequency', 'scheduled_time', 'is_active', 'min_messages', 'max_messages']
     readonly_fields = []
 
 
 @admin.register(ChatConfig)
 class ChatConfigAdmin(admin.ModelAdmin):
-    list_display = ['chat_name', 'chat_id', 'session', 'is_active', 'schedules_count', 'messages_today']
-    list_filter = ['is_active', 'session']
-    search_fields = ['chat_name', 'chat_id', 'session__device_id']
+    list_display = ['chat_name', 'chat_id', 'is_active', 'schedules_count', 'messages_today']
+    list_filter = ['is_active']
+    search_fields = ['chat_name', 'chat_id']
     inlines = [MessageScheduleInline]
     
     fieldsets = (
         ('Основная информация', {
-            'fields': ('session', 'chat_id', 'chat_name', 'is_active')
+            'fields': ('user', 'chat_id', 'chat_name', 'is_active')
         }),
     )
     
-    def save_formset(self, request, form, formset, change):
-        """Автоматическое заполнение сессии для расписаний"""
-        instances = formset.save(commit=False)
-        for instance in instances:
-            if isinstance(instance, MessageSchedule):
-                # Наследуем сессию от родительской конфигурации чата
-                instance.session = instance.chat_config.session
-            instance.save()
-        formset.save_m2m()
-    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(user=request.user)
+
+    def save_model(self, request, obj, form, change):
+        if not obj.user:
+            obj.user = request.user
+        super().save_model(request, obj, form, change)
+
     def schedules_count(self, obj):
         """Количество активных расписаний"""
         return obj.schedules.filter(is_active=True).count()
     schedules_count.short_description = 'Активных расписаний'
     
     def messages_today(self, obj):
-        """Сообщений отправлено сегодня"""
+        """Сообщений отправлено сегодня (суммарно по всем сессиям)"""
         today = date.today()
         count = MessageLog.objects.filter(
             chat_config=obj,

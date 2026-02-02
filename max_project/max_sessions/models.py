@@ -25,9 +25,9 @@ class MaxSession(models.Model):
 
 
 class ChatConfig(models.Model):
-    """Конфигурация чатов для отправки сообщений"""
-    session = models.ForeignKey(MaxSession, on_delete=models.CASCADE, related_name='chats')
-    chat_id = models.CharField(max_length=100, verbose_name='ID чата') ## исправить длину чата
+    """Конфигурация чатов для отправки сообщений (теперь общая для всех сессий пользователя)"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='chat_configs', verbose_name='Пользователь', null=True)
+    chat_id = models.CharField(max_length=100, verbose_name='ID чата')
     chat_name = models.CharField(max_length=255, blank=True, verbose_name='Название чата')
     is_active = models.BooleanField(default=True, verbose_name='Активен')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создан')
@@ -36,11 +36,11 @@ class ChatConfig(models.Model):
         db_table = 'chat_configs'
         verbose_name = 'Конфигурация чата'
         verbose_name_plural = 'Конфигурации чатов'
-        unique_together = ['session', 'chat_id']
+        unique_together = ['user', 'chat_id']
         ordering = ['chat_name']
     
     def __str__(self):
-        return f"{self.chat_name or self.chat_id} ({self.session.device_id})"
+        return f"{self.chat_name or self.chat_id}"
 
 
 class MessageSchedule(models.Model):

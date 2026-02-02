@@ -11,7 +11,7 @@ class ChatConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatConfig
         fields = '__all__'
-        read_only_fields = ('created_at',)
+        read_only_fields = ('created_at', 'user')
 
 class MessageScheduleSerializer(serializers.ModelSerializer):
     frequency_display = serializers.CharField(source='get_frequency_display', read_only=True)
