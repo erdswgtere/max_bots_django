@@ -138,6 +138,17 @@ class MaxSessionAdmin(admin.ModelAdmin):
         try:
             # Используем async_to_sync для вызова асинхронного метода из синхронного контекста
             payload = async_to_sync(service.start_qr_auth)()
+            
+            # Обработка времени истечения (конвертация из мс в datetime)
+            expires_at = payload.get('expiresAt')
+            if expires_at:
+                from datetime import datetime
+                # Если это таймстамп в мс (13 знаков)
+                if isinstance(expires_at, (int, float)) and expires_at > 10**11:
+                    payload['expires_at_dt'] = datetime.fromtimestamp(expires_at / 1000)
+                elif isinstance(expires_at, (int, float)):
+                    payload['expires_at_dt'] = datetime.fromtimestamp(expires_at)
+            
             context = {
                 **self.admin_site.each_context(request),
                 'session': session,

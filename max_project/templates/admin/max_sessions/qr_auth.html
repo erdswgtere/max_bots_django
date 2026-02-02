@@ -110,7 +110,7 @@
         </div>
 
         <div class="timer" id="timer">
-            Действует до: {{ qr_data.expiresAt }}
+            Действует до: {{ qr_data.expires_at_dt|date:"H:i:s"|default:"неизвестно" }}
         </div>
 
         <div id="debug-info"
