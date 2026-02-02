@@ -79,8 +79,8 @@ class MaxSessionAdmin(admin.ModelAdmin):
     user_agent_display.short_description = 'User Agent'
     
     def chats_count(self, obj):
-        """Количество подключенных чатов"""
-        return obj.chats.filter(is_active=True).count()
+        """Количество чатов, в которые данная сессия отправляет сообщения"""
+        return obj.schedules.filter(is_active=True).values('chat_config').distinct().count()
     chats_count.short_description = 'Активных чатов'
     
     def success_rate_today(self, obj):
