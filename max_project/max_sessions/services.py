@@ -26,7 +26,7 @@ class MaxClientService:
             self.device_id = self.user_agent_data.get('payload', {}).get('deviceId')
             
         self.websocket = None
-        self.seq_counter = 100
+        self.seq_counter = 0
         self.connection_active = False
     
     def _generate_user_agent(self, device_id: Optional[str] = None) -> dict:
@@ -34,7 +34,7 @@ class MaxClientService:
             device_id = str(uuid4())
         
         return {
-            "ver": 13,
+            "ver": 11,
             "cmd": 0,
             "seq": 0,
             "opcode": 6,
@@ -42,7 +42,7 @@ class MaxClientService:
                 "userAgent": {
                     "deviceType": "WEB",
                     "locale": "ru",
-                    "deviceLocale": "en",
+                    "deviceLocale": "ru",
                     "osVersion": "Linux",
                     "deviceName": "Chrome",
                     "headerUserAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
@@ -64,7 +64,6 @@ class MaxClientService:
     async def _connect(self):
         """
         Асинхронное подключение к WebSocket API Max.
-        Переписанная async версия из старого проекта.
         """
         if not self.user_agent_data:
             if not self.device_id:
@@ -75,7 +74,6 @@ class MaxClientService:
             self.session.user_agent_data = self.user_agent_data
             await self.session.asave()
         elif not self.device_id:
-            # If we have user_agent_data but no device_id in model field, extract and save it
             self.device_id = self.user_agent_data.get('payload', {}).get('deviceId')
             if self.device_id:
                 self.session.device_id = self.device_id
@@ -102,11 +100,21 @@ class MaxClientService:
             )
             self.connection_active = True
             
-            logger.info(f"[{self.device_id}] Sending user agent...")
-            await self.websocket.send(json.dumps(self.user_agent_data))
+            # Step 1: Opcode 6 Handshake (MANDATORY)
+            self.seq_counter = 0
+            handshake_payload = {
+                "ver": 11,
+                "cmd": 0,
+                "seq": self.seq_counter,
+                "opcode": 6,
+                "payload": self.user_agent_data["payload"]
+            }
+            
+            logger.info(f"[{self.device_id}] Sending handshake (opcode 6)...")
+            await self.websocket.send(json.dumps(handshake_payload))
             
             response = await self.websocket.recv()
-            logger.info(f"[{self.device_id}] User agent response: {response}")
+            logger.info(f"[{self.device_id}] Handshake response: {response}")
             
         except Exception as e:
             logger.error(f"[{self.device_id}] Connection error: {e}")
@@ -245,7 +253,7 @@ class MaxClientService:
                 "chatsCount": 40,
                 "chatsSync": 0,
                 "contactsSync": 0,
-                "presenceSync": 0,
+                "presenceSync": -1,
                 "draftsSync": 0
             }
         }
