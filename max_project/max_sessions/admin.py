@@ -22,6 +22,33 @@ from .models import (
 from .tasks import send_scheduled_messages, test_session_connection
 
 
+# Кастомная сортировка моделей в боковом меню
+def get_app_list(self, request, app_label=None):
+    """
+    Переопределение порядка моделей в админке.
+    """
+    app_dict = self._build_app_dict(request, app_label)
+    
+    # Желаемый порядок моделей для приложения max_sessions
+    model_order = {
+        'MaxSession': 1,
+        'ChatConfig': 2,
+        'MessageSchedule': 3,
+        'MessageLog': 4,
+        'DailyStatistics': 5,
+    }
+    
+    app_list = sorted(app_dict.values(), key=lambda x: x['name'].lower())
+    
+    for app in app_list:
+        if app['app_label'] == 'max_sessions':
+            app['models'].sort(key=lambda x: model_order.get(x['object_name'], 100))
+            
+    return app_list
+
+admin.AdminSite.get_app_list = get_app_list
+
+
 @admin.register(MaxSession)
 class MaxSessionAdmin(admin.ModelAdmin):
     list_display = ['name', 'device_id', 'user', 'is_active', 'created_at', 'chats_count', 'success_rate_today', 'action_buttons']
