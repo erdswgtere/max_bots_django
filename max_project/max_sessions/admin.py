@@ -238,7 +238,7 @@ class TaskRunInline(admin.TabularInline):
     """Inline для истории запусков в расписании"""
     model = TaskRun
     extra = 0
-    readonly_fields = ['started_at', 'finished_at', 'total_expected', 'sent_success', 'sent_failed', 'status']
+    readonly_fields = ['started_at', 'finished_at', 'total_expected', 'sent_success', 'sent_failed', 'success_rate_display', 'status']
     can_delete = False
     
     def has_add_permission(self, request, obj=None):
@@ -246,6 +246,14 @@ class TaskRunInline(admin.TabularInline):
 
     def get_queryset(self, request):
         return super().get_queryset(request).order_by('-started_at')[:10]
+
+    def success_rate_display(self, obj):
+        if obj.total_expected == 0:
+            return "0%"
+        rate = (obj.sent_success / obj.total_expected) * 100
+        color = 'green' if rate >= 90 else 'orange' if rate >= 70 else 'red'
+        return format_html('<strong style="color: {};">{}%</strong>', color, f"{float(rate):.1f}")
+    success_rate_display.short_description = 'Успешность'
 
 
 @admin.register(MessageSchedule)
@@ -492,7 +500,7 @@ class TaskRunAdmin(admin.ModelAdmin):
             return "0%"
         rate = (obj.sent_success / obj.total_expected) * 100
         color = 'green' if rate >= 90 else 'orange' if rate >= 70 else 'red'
-        return format_html('<strong style="color: {};">{:.1f}%</strong>', color, rate)
+        return format_html('<strong style="color: {};">{}%</strong>', color, f"{float(rate):.1f}")
     success_rate_display.short_description = 'Успешность'
 
     def has_add_permission(self, request):
