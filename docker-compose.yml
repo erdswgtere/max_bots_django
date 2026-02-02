@@ -76,7 +76,7 @@ services:
       target: production
     command: >
       sh -c "cd max_project &&
-             celery -A max_project worker -l info --concurrency=4"
+             celery -A max_project worker -l info --concurrency=4 -Q default,maintenance"
     volumes:
       - ./max_project:/app/max_project
       - ./logs:/app/logs
