@@ -188,6 +188,8 @@ class MaxSessionAdmin(admin.ModelAdmin):
 class MessageScheduleInline(admin.TabularInline):
     """Inline для расписаний в ChatConfig"""
     model = MessageSchedule
+    verbose_name = 'расписание'
+    verbose_name_plural = 'расписания для этого чата'
     extra = 0
     fields = ['session', 'frequency', 'scheduled_time', 'is_active', 'min_messages', 'max_messages']
     readonly_fields = []
@@ -259,6 +261,7 @@ class TaskRunInline(admin.TabularInline):
 @admin.register(MessageSchedule)
 class MessageScheduleAdmin(admin.ModelAdmin):
     list_display = [
+        'session',
         'chat_config',
         'frequency',
         'scheduled_time',
