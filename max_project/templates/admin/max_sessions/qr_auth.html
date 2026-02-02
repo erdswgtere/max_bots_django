@@ -3,6 +3,18 @@
 
 {% block extrastyle %}{{ block.super }}
 <style>
+    .qr-title {
+        color: #000;
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+
+    .qr-description {
+        color: #000;
+        font-size: 16px;
+        margin-bottom: 20px;
+    }
+
     .qr-container {
         text-align: center;
         background: white;
@@ -76,10 +88,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <div id="content-main">
     <div class="qr-container">
-        <h1>Отсканируйте QR-код в мессенджере Max</h1>
-        <p>Для активации сессии откройте Max на вашем телефоне -> Настройки -> Связанные устройства -> Привязать
-            устройство</p>
-
+        <h1 id="qr-title">Отсканируйте QR-код в мессенджере Max</h1>
+        <p id="qr-description">Для активации сессии откройте Max на вашем телефоне -> Настройки -> Связанные устройства
+            -> Привязать устройство</p>
         <div id="qr-wrapper">
             {% if qr_data.qrLink %}
             <img src="{{ qr_data.qrLink }}" alt="QR Code" class="qr-image" id="qr-img" onerror="handleQrError()">
