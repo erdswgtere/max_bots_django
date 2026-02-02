@@ -126,17 +126,25 @@ async def _send_messages_async(schedule: MessageSchedule, num_messages: int, tas
         await service.close()
 
 
+from .metrics import ACTIVE_SESSIONS, MESSAGES_SENT, MESSAGES_FAILED
+
+
 def update_statistics(session_id: int, success: bool = True, task_run_id: int = None):
     """
     Обновление ежедневной статистики и статистики конкретного запуска.
-    
-    Args:
-        session_id: ID сессии
-        success: True если сообщение отправлено успешно
-        task_run_id: ID записи о конкретном запуске (TaskRun)
+    Также обновление внешних Prometheus метрик.
     """
+    try:
+        session = MaxSession.objects.get(id=session_id)
+        session_name = session.name or "Unnamed"
+        device_id = session.device_id or "Unknown"
+    except MaxSession.DoesNotExist:
+        session_name = "Unknown"
+        device_id = "Unknown"
+
     today = date.today()
     
+    # 1. Django ORM Stats
     stats, created = DailyStatistics.objects.get_or_create(
         session_id=session_id,
         date=today,
@@ -150,11 +158,18 @@ def update_statistics(session_id: int, success: bool = True, task_run_id: int = 
     stats.total_messages += 1
     if success:
         stats.successful_messages += 1
+        # Prometheus: Успешная отправка
+        MESSAGES_SENT.labels(session_name=session_name, device_id=device_id).inc()
     else:
         stats.failed_messages += 1
+        # Prometheus: Ошибка
+        MESSAGES_FAILED.labels(session_name=session_name, device_id=device_id).inc()
     stats.save()
 
-    # Обновляем TaskRun если есть ID
+    # 2. Update Active Sessions Gauge
+    ACTIVE_SESSIONS.set(MaxSession.objects.filter(is_active=True).count())
+
+    # 3. Обновляем TaskRun если есть ID
     if task_run_id:
         try:
             run = TaskRun.objects.get(id=task_run_id)
