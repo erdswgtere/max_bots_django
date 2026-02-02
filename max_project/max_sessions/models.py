@@ -174,3 +174,24 @@ class DailyStatistics(models.Model):
         if self.total_messages == 0:
             return 0
         return round((self.successful_messages / self.total_messages) * 100, 2)
+
+
+class TaskRun(models.Model):
+    """Статистика за один запуск отправки сообщений"""
+    schedule = models.ForeignKey(MessageSchedule, on_delete=models.CASCADE, related_name='runs', verbose_name='Расписание')
+    session = models.ForeignKey(MaxSession, on_delete=models.CASCADE, related_name='task_runs', verbose_name='Сессия')
+    started_at = models.DateTimeField(auto_now_add=True, verbose_name='Начало')
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name='Конец')
+    total_expected = models.IntegerField(verbose_name='Ожидалось')
+    sent_success = models.IntegerField(default=0, verbose_name='Успешно')
+    sent_failed = models.IntegerField(default=0, verbose_name='Ошибка')
+    status = models.CharField(max_length=20, default='running', verbose_name='Статус')
+
+    class Meta:
+        db_table = 'task_runs'
+        verbose_name = 'Запуск задачи'
+        verbose_name_plural = 'История запусков'
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f"{self.schedule.chat_config.chat_name} ({self.started_at.strftime('%H:%M:%S')})"

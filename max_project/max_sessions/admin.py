@@ -17,7 +17,8 @@ from .models import (
     ChatConfig,
     MessageSchedule,
     MessageLog,
-    DailyStatistics
+    DailyStatistics,
+    TaskRun
 )
 from .tasks import send_scheduled_messages, test_session_connection
 
@@ -34,8 +35,9 @@ def get_app_list(self, request, app_label=None):
         'MaxSession': 1,
         'ChatConfig': 2,
         'MessageSchedule': 3,
-        'MessageLog': 4,
-        'DailyStatistics': 5,
+        'TaskRun': 4,
+        'MessageLog': 5,
+        'DailyStatistics': 6,
     }
     
     app_list = sorted(app_dict.values(), key=lambda x: x['name'].lower())
@@ -232,6 +234,20 @@ class ChatConfigAdmin(admin.ModelAdmin):
     messages_today.short_description = 'Сообщений сегодня'
 
 
+class TaskRunInline(admin.TabularInline):
+    """Inline для истории запусков в расписании"""
+    model = TaskRun
+    extra = 0
+    readonly_fields = ['started_at', 'finished_at', 'total_expected', 'sent_success', 'sent_failed', 'status']
+    can_delete = False
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).order_by('-started_at')[:10]
+
+
 @admin.register(MessageSchedule)
 class MessageScheduleAdmin(admin.ModelAdmin):
     list_display = [
@@ -246,6 +262,7 @@ class MessageScheduleAdmin(admin.ModelAdmin):
     ]
     list_filter = ['is_active', 'frequency', 'session']
     search_fields = ['chat_config__chat_name', 'session__device_id']
+    inlines = [TaskRunInline]
     
     fieldsets = (
         ('Основная информация', {
@@ -443,3 +460,40 @@ class DailyStatisticsAdmin(admin.ModelAdmin):
         extra_context['week_stats'] = week_stats
         
         return super().changelist_view(request, extra_context=extra_context)
+@admin.register(TaskRun)
+class TaskRunAdmin(admin.ModelAdmin):
+    list_display = [
+        'started_at',
+        'session',
+        'schedule',
+        'total_expected',
+        'sent_success',
+        'sent_failed',
+        'success_rate_display',
+        'status'
+    ]
+    list_filter = ['status', 'started_at', 'session', 'schedule']
+    search_fields = ['session__device_id', 'schedule__chat_config__chat_name']
+    readonly_fields = [
+        'schedule',
+        'session',
+        'started_at',
+        'finished_at',
+        'total_expected',
+        'sent_success',
+        'sent_failed',
+        'status',
+        'success_rate_display'
+    ]
+    date_hierarchy = 'started_at'
+
+    def success_rate_display(self, obj):
+        if obj.total_expected == 0:
+            return "0%"
+        rate = (obj.sent_success / obj.total_expected) * 100
+        color = 'green' if rate >= 90 else 'orange' if rate >= 70 else 'red'
+        return format_html('<strong style="color: {};">{:.1f}%</strong>', color, rate)
+    success_rate_display.short_description = 'Успешность'
+
+    def has_add_permission(self, request):
+        return False

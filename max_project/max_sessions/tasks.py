@@ -13,7 +13,7 @@ from celery import shared_task
 from django.utils import timezone
 from asgiref.sync import sync_to_async
 
-from .models import MessageSchedule, MessageLog, DailyStatistics, MaxSession
+from .models import MessageSchedule, MessageLog, DailyStatistics, MaxSession, TaskRun
 from .services import MaxClientService
 
 logger = logging.getLogger(__name__)
@@ -51,8 +51,16 @@ def send_scheduled_messages(self, schedule_id: int):
         num_messages = random.randint(schedule.min_messages, schedule.max_messages)
         logger.info(f"Will send {num_messages} messages")
         
+        # Создаем запись о запуске
+        task_run = TaskRun.objects.create(
+            schedule=schedule,
+            session=schedule.session,
+            total_expected=num_messages,
+            status='running'
+        )
+        
         # Запускаем асинхронную функцию отправки
-        asyncio.run(_send_messages_async(schedule, num_messages))
+        asyncio.run(_send_messages_async(schedule, num_messages, task_run.id))
         
         logger.info(f"Successfully completed schedule {schedule_id}")
         
@@ -68,14 +76,14 @@ def send_scheduled_messages(self, schedule_id: int):
         cache.delete(f"lock:schedule:{schedule_id}")
 
 
-async def _send_messages_async(schedule: MessageSchedule, num_messages: int):
+async def _send_messages_async(schedule: MessageSchedule, num_messages: int, task_run_id: int):
     """
     Асинхронная функция для отправки сообщений.
-    Содержит логику из оригинального main.py.
     
     Args:
         schedule: Объект MessageSchedule
         num_messages: Количество сообщений для отправки
+        task_run_id: ID объекта TaskRun для статистики
     """
     service = MaxClientService(schedule.session)
     
@@ -99,11 +107,11 @@ async def _send_messages_async(schedule: MessageSchedule, num_messages: int):
                 logger.info(f"Message {i+1}/{num_messages} sent successfully")
                 
                 # Обновляем статистику
-                await sync_to_async(update_statistics)(schedule.session.id, success=True)
+                await sync_to_async(update_statistics)(schedule.session.id, success=True, task_run_id=task_run_id)
                 
             except Exception as e:
                 logger.error(f"Error sending message {i+1}/{num_messages}: {e}")
-                await sync_to_async(update_statistics)(schedule.session.id, success=False)
+                await sync_to_async(update_statistics)(schedule.session.id, success=False, task_run_id=task_run_id)
             
             # Ждем случайный интервал перед следующим сообщением (кроме последнего)
             if i < num_messages - 1:
@@ -112,17 +120,20 @@ async def _send_messages_async(schedule: MessageSchedule, num_messages: int):
                 await asyncio.sleep(interval)
                 
     finally:
+        # Завершаем запись о запуске
+        await sync_to_async(finish_task_run)(task_run_id)
         # Закрываем соединение
         await service.close()
 
 
-def update_statistics(session_id: int, success: bool = True):
+def update_statistics(session_id: int, success: bool = True, task_run_id: int = None):
     """
-    Обновление ежедневной статистики.
+    Обновление ежедневной статистики и статистики конкретного запуска.
     
     Args:
         session_id: ID сессии
         success: True если сообщение отправлено успешно
+        task_run_id: ID записи о конкретном запуске (TaskRun)
     """
     today = date.today()
     
@@ -141,10 +152,32 @@ def update_statistics(session_id: int, success: bool = True):
         stats.successful_messages += 1
     else:
         stats.failed_messages += 1
-    
     stats.save()
+
+    # Обновляем TaskRun если есть ID
+    if task_run_id:
+        try:
+            run = TaskRun.objects.get(id=task_run_id)
+            if success:
+                run.sent_success += 1
+            else:
+                run.sent_failed += 1
+            run.save()
+        except TaskRun.DoesNotExist:
+            pass
     
     logger.info(f"Updated statistics for session {session_id}: {stats.successful_messages}/{stats.total_messages}")
+
+
+def finish_task_run(task_run_id: int):
+    """Помечает запуск как завершенный"""
+    try:
+        run = TaskRun.objects.get(id=task_run_id)
+        run.finished_at = timezone.now()
+        run.status = 'completed'
+        run.save()
+    except TaskRun.DoesNotExist:
+        pass
 
 
 @shared_task
