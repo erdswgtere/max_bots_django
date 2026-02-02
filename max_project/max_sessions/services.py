@@ -64,7 +64,7 @@ class MaxClientService:
     async def _connect(self):
         """
         Асинхронное подключение к WebSocket API Max.
-        Переписанная async версия из main.py.
+        Переписанная async версия из старого проекта.
         """
         if not self.user_agent_data:
             if not self.device_id:
