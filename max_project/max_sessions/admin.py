@@ -111,7 +111,10 @@ class MaxSessionAdmin(admin.ModelAdmin):
                 reverse('admin:max_sessions_maxsession_qr', args=[obj.pk])
             ))
             
-        return mark_safe("&nbsp;&nbsp;".join(buttons))
+        return format_html(
+            '<div style="white-space: nowrap; min-width: 200px;">{}</div>',
+            mark_safe("&nbsp;&nbsp;".join(buttons))
+        )
     action_buttons.short_description = 'Действия'
     
     def get_urls(self):
