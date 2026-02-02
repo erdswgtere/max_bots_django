@@ -245,7 +245,7 @@ class TaskRunInline(admin.TabularInline):
         return False
 
     def get_queryset(self, request):
-        return super().get_queryset(request).order_by('-started_at')[:10]
+        return super().get_queryset(request).order_by('-started_at')
 
     def success_rate_display(self, obj):
         if obj.total_expected == 0:
