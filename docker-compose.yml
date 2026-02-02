@@ -67,6 +67,9 @@ services:
         condition: service_healthy
     networks:
       - max_network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     restart: unless-stopped
 
   # Celery Worker
@@ -92,6 +95,9 @@ services:
         condition: service_healthy
     networks:
       - max_network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     restart: unless-stopped
 
   # Celery Beat Scheduler
@@ -119,6 +125,9 @@ services:
         condition: service_started
     networks:
       - max_network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     restart: unless-stopped
 
   # Flower - Celery Monitoring (Optional)
@@ -141,6 +150,9 @@ services:
       - celery_worker
     networks:
       - max_network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     restart: unless-stopped
 
   # Nginx Reverse Proxy

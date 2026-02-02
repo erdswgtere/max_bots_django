@@ -34,6 +34,16 @@ def send_scheduled_messages(self, schedule_id: int):
             logger.warning(f"Schedule {schedule_id} or session is inactive, skipping")
             return
         
+        # Redis Lock to prevent concurrent execution
+        from django.core.cache import cache
+        lock_id = f"lock:schedule:{schedule_id}"
+        # Set lock for 10 minutes (long enough for message sending, cleanup deletes it)
+        is_locked = cache.add(lock_id, "true", 600)
+        
+        if not is_locked:
+            logger.warning(f"Schedule {schedule_id} is already running, skipping duplicate task")
+            return
+
         logger.info(f"Starting scheduled message sending for schedule {schedule_id}")
         
         # Определяем количество сообщений для отправки
@@ -51,6 +61,10 @@ def send_scheduled_messages(self, schedule_id: int):
         logger.error(f"Error in send_scheduled_messages for schedule {schedule_id}: {e}")
         # Повторная попытка через экспоненциальный backoff
         raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+    finally:
+        # Release the lock
+        from django.core.cache import cache
+        cache.delete(f"lock:schedule:{schedule_id}")
 
 
 async def _send_messages_async(schedule: MessageSchedule, num_messages: int):
