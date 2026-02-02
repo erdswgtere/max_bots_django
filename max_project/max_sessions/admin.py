@@ -90,7 +90,7 @@ class MaxSessionAdmin(admin.ModelAdmin):
         if stats and stats.total_messages > 0:
             rate = stats.success_rate
             color = 'green' if rate >= 90 else 'orange' if rate >= 70 else 'red'
-            return format_html('<span style="color: {};">{:.1f}%</span>', color, rate)
+            return format_html('<span style="color: {};">{}%</span>', color, f"{float(rate):.1f}")
         return '-'
     success_rate_today.short_description = 'Успешность сегодня'
     
@@ -410,7 +410,7 @@ class DailyStatisticsAdmin(admin.ModelAdmin):
             color = 'orange'
         else:
             color = 'red'
-        return format_html('<strong style="color: {};">{:.1f}%</strong>', color, rate)
+        return format_html('<strong style="color: {};">{}%</strong>', color, f"{float(rate):.1f}")
     success_rate_display.short_description = 'Успешность'
     
     def changelist_view(self, request, extra_context=None):
