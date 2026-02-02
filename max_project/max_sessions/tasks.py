@@ -8,9 +8,10 @@ import string
 import logging
 from datetime import date, timedelta
 from typing import List
-
+from django.db.models import Sum
 from celery import shared_task
 from django.utils import timezone
+from asgiref.sync import sync_to_async
 
 from .models import MessageSchedule, MessageLog, DailyStatistics, MaxSession
 from .services import MaxClientService
@@ -98,11 +99,11 @@ async def _send_messages_async(schedule: MessageSchedule, num_messages: int):
                 logger.info(f"Message {i+1}/{num_messages} sent successfully")
                 
                 # Обновляем статистику
-                update_statistics(schedule.session.id, success=True)
+                await sync_to_async(update_statistics)(schedule.session.id, success=True)
                 
             except Exception as e:
                 logger.error(f"Error sending message {i+1}/{num_messages}: {e}")
-                update_statistics(schedule.session.id, success=False)
+                await sync_to_async(update_statistics)(schedule.session.id, success=False)
             
             # Ждем случайный интервал перед следующим сообщением (кроме последнего)
             if i < num_messages - 1:
@@ -281,5 +282,4 @@ def cleanup_inactive_sessions(days_inactive: int = 90):
         raise
 
 
-# Импорт для aggregate функции
-from django.db.models import Sum
+
