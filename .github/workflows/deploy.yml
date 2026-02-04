@@ -20,7 +20,7 @@ jobs:
           # Если папки нет - клонируем (используем HTTPS для универсальности)
           if [ ! -d "${{ secrets.DEPLOY_PATH }}" ]; then
             echo ">>> Folder not found. Cloning repository..."
-            git clone https://github.com/${{ github.repository }}.git ${{ secrets.DEPLOY_PATH }}
+            git clone git@github.com:${{ github.repository }}.git ${{ secrets.DEPLOY_PATH }}
           fi
           
           cd ${{ secrets.DEPLOY_PATH }}
