@@ -72,7 +72,6 @@ def send_scheduled_messages(self, schedule_id: int):
         raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
     finally:
         # Release the lock
-        from django.core.cache import cache
         cache.delete(f"lock:schedule:{schedule_id}")
 
 
