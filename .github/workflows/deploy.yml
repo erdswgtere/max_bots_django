@@ -17,9 +17,18 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: ${{ secrets.SSH_PORT || 22 }}
         script: |
-          # Если папки нет - клонируем (используем HTTPS для универсальности)
+          # 0. Настройка SSH для работы с GitHub через 443 порт (если нужно)
+          mkdir -p ~/.ssh
+          if ! grep -q "ssh.github.com" ~/.ssh/config 2>/dev/null; then
+            echo -e "Host github.com\n  Hostname ssh.github.com\n  Port 443\n  User git" >> ~/.ssh/config
+            chmod 600 ~/.ssh/config
+          fi
+          
+          # 1. Если папки нет - клонируем (используем SSH через 443 порт)
           if [ ! -d "${{ secrets.DEPLOY_PATH }}" ]; then
             echo ">>> Folder not found. Cloning repository..."
+            # Добавляем GitHub в known_hosts, чтобы избежать "Host key verification failed"
+            ssh-keyscan -p 443 ssh.github.com >> ~/.ssh/known_hosts 2>/dev/null
             git clone git@github.com:${{ github.repository }}.git ${{ secrets.DEPLOY_PATH }}
           fi
           
