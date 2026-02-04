@@ -112,3 +112,20 @@ jobs:
             echo "ERROR: Collectstatic failed!"
             exit 1
           fi
+
+    - name: 6. Create Superuser
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        script: |
+          cd ${{ secrets.DEPLOY_PATH }}
+          # Создаем суперпользователя, если он еще не создан.
+          # Используем переменные окружения для автоматизации.
+          docker compose exec -e DJANGO_SUPERUSER_PASSWORD="${{ secrets.SUPERUSER_PASSWORD }}" web \
+            python max_project/manage.py createsuperuser \
+            --no-input \
+            --username "${{ secrets.SUPERUSER_USERNAME }}" \
+            --email "${{ secrets.SUPERUSER_EMAIL }}" || echo "Superuser already exists or failed to create."
