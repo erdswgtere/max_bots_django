@@ -7,6 +7,8 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_HOST_AUTH_METHOD: trust
+    env_file:
+      - .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -15,11 +17,13 @@ services:
       - max_network
     command: >
       postgres -c listen_addresses='0.0.0.0' -c max_connections=100
+    restart: unless-stopped
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
-      interval: 5s
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   # Redis Cache & Celery Broker
   redis:
@@ -31,10 +35,11 @@ services:
       - max_network
     volumes:
       - redis_data:/data
+    restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 5
 
   # Django Web Application
