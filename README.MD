@@ -28,6 +28,7 @@
 
 - 📄 **[DEPLOY.md](DEPLOY.md)** — Подробная инструкция по развертыванию на сервер.
 - 📊 **[MONITORING.md](MONITORING.md)** — Настройка Prometheus и рекомендации по Grafana.
+- ⚡ **[REDIS.md](REDIS.md)** — Роль и конфигурация Redis в проекте.
 
 ---
 
