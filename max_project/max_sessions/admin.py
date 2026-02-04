@@ -8,6 +8,7 @@ from django.utils.html import format_html
 from django.urls import reverse, path
 from django.utils.safestring import mark_safe
 from django.db.models import Count, Sum
+from django.utils import timezone
 from datetime import date, timedelta
 from asgiref.sync import async_to_sync
 from .services import MaxClientService
@@ -313,7 +314,9 @@ class MessageScheduleAdmin(admin.ModelAdmin):
         ).order_by('-sent_at').first()
         
         if last_log:
-            return last_log.sent_at.strftime('%Y-%m-%d %H:%M:%S')
+            # Преобразуем из UTC в локальное время (Москва)
+            local_time = timezone.localtime(last_log.sent_at)
+            return local_time.strftime('%Y-%m-%d %H:%M:%S')
         return '-'
     last_run.short_description = 'Последний запуск'
     
