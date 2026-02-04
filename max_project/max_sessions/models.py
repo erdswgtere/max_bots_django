@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 
@@ -143,7 +144,8 @@ class MessageLog(models.Model):
         ]
     
     def __str__(self):
-        return f"{self.chat_config.chat_name} - {self.get_status_display()} - {self.sent_at.strftime('%Y-%m-%d %H:%M:%S')}"
+        local_sent_at = timezone.localtime(self.sent_at)
+        return f"{self.chat_config.chat_name} - {self.get_status_display()} - {local_sent_at.strftime('%Y-%m-%d %H:%M:%S')}"
 
 
 class DailyStatistics(models.Model):
@@ -194,4 +196,5 @@ class TaskRun(models.Model):
         ordering = ['-started_at']
 
     def __str__(self):
-        return f"{self.schedule.chat_config.chat_name} ({self.started_at.strftime('%H:%M:%S')})"
+        local_started_at = timezone.localtime(self.started_at)
+        return f"{self.schedule.chat_config.chat_name} ({local_started_at.strftime('%H:%M:%S')})"
