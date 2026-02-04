@@ -1,51 +1,71 @@
 name: Deploy to Production
 
 on:
-  workflow_dispatch
-#  push:
-#    branches: [ "main" ]
+  push:
+    branches: [ "main"] # Включаем обе на переходный период
+  workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v3
-
-    # 1. Создаем .env файл из секретов GitHub
-    - name: Create .env file
-      run: |
-        echo "DEBUG=False" >> .env
-        echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env
-        echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
-        echo "DB_USER=${{ secrets.DB_USER }}" >> .env
-        echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-        echo "DB_HOST=${{ secrets.DB_HOST }}" >> .env
-        echo "DB_PORT=${{ secrets.DB_PORT }}" >> .env
-        echo "REDIS_HOST=${{ secrets.REDIS_HOST }}" >> .env
-        echo "ALLOWED_HOSTS=${{ secrets.ALLOWED_HOSTS }}" >> .env
-      
-    # 2. Собираем и запускаем через Docker Compose
-    # Примечание: В реальном продакшене вы бы деплоили образы в Registry (Docker Hub)
-    # или использовали SSH для деплоя на сервер.
-    # Здесь пример сборки и проверки запуска.
-    
-    - name: Build Docker images
-      run: docker-compose build
-
-    - name: Test Docker configuration
-      run: docker-compose config
-      
-    # Пример деплоя по SSH (раскомментируйте и настройте если нужно)
-    # - name: Deploy to Server via SSH
-    #   uses: appleboy/ssh-action@master
-    #   with:
-    #     host: ${{ secrets.SERVER_HOST }}
-    #     username: ${{ secrets.SERVER_USER }}
-    #     key: ${{ secrets.SSH_PRIVATE_KEY }}
-    #     script: |
-    #       cd /path/to/project
-    #       git pull
-    #       # Пересоздаем .env на сервере (или копируем его через scp)
-    #       echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" > .env
-    #       docker-compose up -d --build
+    - name: Deploy to Server via SSH
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd ${{ secrets.DEPLOY_PATH }}
+          
+          echo ">>> 1. Updating code..."
+          git pull origin ${{ github.ref_name }}
+          
+          echo ">>> 2. Syncing environment variables (.env)..."
+          # Создаем .env файл заново из секретов GitHub
+          # Это гарантирует, что на сервере всегда актуальные настройки
+          cat <<EOF > .env
+          DEBUG=False
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_PORT=${{ secrets.DB_PORT }}
+          REDIS_HOST=${{ secrets.REDIS_HOST }}
+          ALLOWED_HOSTS=${{ secrets.ALLOWED_HOSTS }}
+          EOF
+          
+          echo ">>> 3. Restarting containers..."
+          docker compose up -d --build
+          
+          echo ">>> 3. Checking for missing migrations..."
+          # Проверяем, что в коде нет забытых миграций
+          MAKEMIG_OUT=$(docker compose exec web python max_project/manage.py makemigrations max_sessions)
+          echo "$MAKEMIG_OUT"
+          if [[ "$MAKEMIG_OUT" != *"No changes detected in app 'max_sessions'"* ]]; then
+            echo "ERROR: Uncommitted changes detected in max_sessions! Please run makemigrations locally and commit."
+            exit 1
+          fi
+          
+          echo ">>> 4. Running migrations..."
+          MIGRATE_OUT=$(docker compose exec web python max_project/manage.py migrate)
+          echo "$MIGRATE_OUT"
+          if [[ "$MIGRATE_OUT" == *"Operations to perform:"* ]] || [[ "$MIGRATE_OUT" == *"No migrations to apply."* ]]; then
+             echo "Migration check passed."
+          else
+             echo "ERROR: Migration failed!"
+             exit 1
+          fi
+          
+          echo ">>> 5. Collecting static files..."
+          STATIC_OUT=$(docker compose exec web python max_project/manage.py collectstatic --noinput)
+          echo "$STATIC_OUT"
+          if [[ "$STATIC_OUT" == *"static files copied"* ]] || [[ "$STATIC_OUT" == *"unmodified"* ]]; then
+             echo "Static collection passed."
+          else
+             echo "ERROR: Collectstatic failed!"
+             exit 1
+          fi
+          
+          echo ">>> DEPLOY SUCCESSFUL"
