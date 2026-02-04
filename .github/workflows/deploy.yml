@@ -9,7 +9,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - name: Deploy to Server via SSH
+    - name: 1. Update Code and .env
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.SSH_HOST }}
@@ -18,13 +18,7 @@ jobs:
         port: ${{ secrets.SSH_PORT || 22 }}
         script: |
           cd ${{ secrets.DEPLOY_PATH }}
-          
-          echo ">>> 1. Updating code..."
           git pull origin ${{ github.ref_name }}
-          
-          echo ">>> 2. Syncing environment variables (.env)..."
-          # Создаем .env файл заново из секретов GitHub
-          # Это гарантирует, что на сервере всегда актуальные настройки
           cat <<EOF > .env
           DEBUG=False
           SECRET_KEY=${{ secrets.SECRET_KEY }}
@@ -38,37 +32,62 @@ jobs:
           DJANGO_LOG_LEVEL=${{ vars.DJANGO_LOG_LEVEL || 'INFO' }}
           ALLOWED_HOSTS=${{ secrets.ALLOWED_HOSTS }}
           EOF
-          
-          echo ">>> 3. Restarting containers..."
+
+    - name: 2. Restart Containers
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        script: |
+          cd ${{ secrets.DEPLOY_PATH }}
           docker compose up -d --build
-          
-          echo ">>> 3. Checking for missing migrations..."
-          # Проверяем, что в коде нет забытых миграций
-          MAKEMIG_OUT=$(docker compose exec web python max_project/manage.py makemigrations max_sessions)
-          echo "$MAKEMIG_OUT"
-          if [[ "$MAKEMIG_OUT" != *"No changes detected in app 'max_sessions'"* ]]; then
-            echo "ERROR: Uncommitted changes detected in max_sessions! Please run makemigrations locally and commit."
+
+    - name: 3. Verify Makemigrations
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        script: |
+          cd ${{ secrets.DEPLOY_PATH }}
+          OUT=$(docker compose exec web python max_project/manage.py makemigrations max_sessions)
+          echo "$OUT"
+          if [[ "$OUT" != *"No changes detected"* ]]; then
+            echo "ERROR: Uncommitted changes found!"
             exit 1
           fi
-          
-          echo ">>> 4. Running migrations..."
-          MIGRATE_OUT=$(docker compose exec web python max_project/manage.py migrate)
-          echo "$MIGRATE_OUT"
-          if [[ "$MIGRATE_OUT" == *"Operations to perform:"* ]] || [[ "$MIGRATE_OUT" == *"No migrations to apply."* ]]; then
-             echo "Migration check passed."
-          else
-             echo "ERROR: Migration failed!"
-             exit 1
+
+    - name: 4. Run Migrations
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        script: |
+          cd ${{ secrets.DEPLOY_PATH }}
+          OUT=$(docker compose exec web python max_project/manage.py migrate)
+          echo "$OUT"
+          if [[ "$OUT" != *"Operations to perform"* ]] && [[ "$OUT" != *"No migrations"* ]]; then
+            echo "ERROR: Migration failed!"
+            exit 1
           fi
-          
-          echo ">>> 5. Collecting static files..."
-          STATIC_OUT=$(docker compose exec web python max_project/manage.py collectstatic --noinput)
-          echo "$STATIC_OUT"
-          if [[ "$STATIC_OUT" == *"static files copied"* ]] || [[ "$STATIC_OUT" == *"unmodified"* ]]; then
-             echo "Static collection passed."
-          else
-             echo "ERROR: Collectstatic failed!"
-             exit 1
+
+    - name: 5. Collect Static
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        script: |
+          cd ${{ secrets.DEPLOY_PATH }}
+          OUT=$(docker compose exec web python max_project/manage.py collectstatic --noinput)
+          echo "$OUT"
+          if [[ "$OUT" != *"static files copied"* ]] && [[ "$OUT" != *"unmodified"* ]]; then
+            echo "ERROR: Collectstatic failed!"
+            exit 1
           fi
-          
-          echo ">>> DEPLOY SUCCESSFUL"
