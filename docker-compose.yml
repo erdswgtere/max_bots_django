@@ -58,8 +58,6 @@ services:
       - static_volume:/app/max_project/staticfiles
       - media_volume:/app/max_project/media
       - ./logs:/app/logs
-    ports:
-      - "8001:8000"
     env_file:
       - .env
     environment:
