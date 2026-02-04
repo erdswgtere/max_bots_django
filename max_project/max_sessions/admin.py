@@ -24,14 +24,27 @@ from .models import (
 from .tasks import send_scheduled_messages, test_session_connection
 
 
-# Кастомная сортировка моделей в боковом меню
+# Кастомная сортировка моделей и приложений в боковом меню
 def get_app_list(self, request, app_label=None):
     """
-    Переопределение порядка моделей в админке.
+    Переопределение порядка приложений и моделей в админке.
     """
     app_dict = self._build_app_dict(request, app_label)
     
-    # Желаемый порядок моделей для приложения max_sessions
+    # Желаемый порядок приложений (по app_label)
+    app_order = {
+        'max_sessions': 1,
+        'django_celery_beat': 2,
+        'auth': 3,
+    }
+    
+    # Сначала сортируем приложения по нашему списку приоритетов
+    app_list = sorted(
+        app_dict.values(), 
+        key=lambda x: app_order.get(x['app_label'], 100)
+    )
+    
+    # Желаемый порядок моделей внутри нашего приложения
     model_order = {
         'MaxSession': 1,
         'ChatConfig': 2,
@@ -40,8 +53,6 @@ def get_app_list(self, request, app_label=None):
         'MessageLog': 5,
         'DailyStatistics': 6,
     }
-    
-    app_list = sorted(app_dict.values(), key=lambda x: x['name'].lower())
     
     for app in app_list:
         if app['app_label'] == 'max_sessions':
