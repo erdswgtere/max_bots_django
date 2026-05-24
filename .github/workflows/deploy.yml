@@ -39,7 +39,7 @@ jobs:
           git checkout ${{ github.ref_name }}
           git pull origin ${{ github.ref_name }}
           
-          echo ">>> Syncing .env..."
+          echo ">>> Syncing configuration (.env & .htpasswd)..."
           cat <<EOF > .env
           DEBUG=False
           SECRET_KEY=${{ secrets.SECRET_KEY }}
@@ -53,6 +53,10 @@ jobs:
           DJANGO_LOG_LEVEL=${{ vars.DJANGO_LOG_LEVEL || 'INFO' }}
           ALLOWED_HOSTS=${{ secrets.ALLOWED_HOSTS }}
           EOF
+
+          mkdir -p nginx/auth
+          echo "${{ secrets.METRICS_HTPASSWD }}" > nginx/auth/.htpasswd
+          chmod 600 nginx/auth/.htpasswd
 
     - name: 2. Restart Containers
       uses: appleboy/ssh-action@master

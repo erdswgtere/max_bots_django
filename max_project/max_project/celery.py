@@ -42,6 +42,7 @@ app.conf.beat_schedule = {
 # Настройки для задач
 app.conf.task_routes = {
     'max_sessions.tasks.send_scheduled_messages': {'queue': 'default'},
+    'max_sessions.tasks.run_qr_auth_flow': {'queue': 'default'},
     'max_sessions.tasks.cleanup_old_logs': {'queue': 'maintenance'},
     'max_sessions.tasks.cleanup_inactive_sessions': {'queue': 'maintenance'},
 }

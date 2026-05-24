@@ -148,13 +148,27 @@ class MaxSessionAdmin(admin.ModelAdmin):
         
     def qr_auth_view(self, request, object_id):
         """Вью для отображения QR кода и процесса входа"""
+        import time
+        from django.core.cache import cache
+        from .tasks import run_qr_auth_flow
         
         session = self.get_object(request, object_id)
-        service = MaxClientService(session)
         
         try:
-            # Используем async_to_sync для вызова асинхронного метода из синхронного контекста
-            payload = async_to_sync(service.start_qr_auth)()
+            # Запускаем Celery задачу
+            run_qr_auth_flow.apply_async(args=[session.id], queue='default')
+            
+            # Ждем появления данных QR кода в кэше (до 5 секунд)
+            cache_key = f"qr_auth_data_{session.id}"
+            payload = None
+            for _ in range(50):
+                payload = cache.get(cache_key)
+                if payload:
+                    break
+                time.sleep(0.1)
+                
+            if not payload:
+                raise TimeoutError("Timeout waiting for QR code from Celery worker")
             
             # Обработка времени истечения (конвертация из мс в datetime)
             expires_at = payload.get('expiresAt')

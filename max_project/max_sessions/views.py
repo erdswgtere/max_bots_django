@@ -24,18 +24,37 @@ class MaxSessionViewSet(viewsets.ModelViewSet):
     def start_qr_auth(self, request, pk=None):
         """
         Начало авторизации по QR коду.
-        Возвращает ссылку на QR код и trackId для проверки.
+        Запускает фоновую задачу Celery и ожидает появления QR-ссылки.
         """
+        import time
+        from django.core.cache import cache
+        from .tasks import run_qr_auth_flow
+        
         session = self.get_object()
-        service = MaxClientService(session)
+        
         try:
-            payload = async_to_sync(service.start_qr_auth)()
-            return Response({
-                'qrLink': payload['qrLink'],
-                'trackId': payload['trackId'],
-                'expiresAt': payload['expiresAt'],
-                'pollingInterval': payload['pollingInterval']
-            })
+            # Запускаем Celery задачу
+            run_qr_auth_flow.apply_async(args=[session.id], queue='default')
+            
+            # Ждем появления данных QR кода в кэше (до 5 секунд)
+            cache_key = f"qr_auth_data_{session.id}"
+            payload = None
+            for _ in range(50):
+                payload = cache.get(cache_key)
+                if payload:
+                    break
+                time.sleep(0.1)
+                
+            if payload:
+                return Response({
+                    'qrLink': payload.get('qrLink'),
+                    'trackId': payload.get('trackId'),
+                    'expiresAt': payload.get('expiresAt'),
+                    'pollingInterval': payload.get('pollingInterval', 5000)
+                })
+            else:
+                return Response({'error': 'Timeout waiting for QR code from Celery worker'}, status=status.HTTP_408_REQUEST_TIMEOUT)
+                
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -43,18 +62,21 @@ class MaxSessionViewSet(viewsets.ModelViewSet):
     def check_qr(self, request, pk=None):
         """
         Проверка статуса QR авторизации.
-        Принимает trackId. Если авторизация успешна, сохраняет токен.
+        Читает статус напрямую из кэша, обновляемого фоновой задачей.
         """
+        from django.core.cache import cache
         session = self.get_object()
         track_id = request.data.get('trackId')
         
         if not track_id:
             return Response({'error': 'trackId is required'}, status=status.HTTP_400_BAD_REQUEST)
             
-        service = MaxClientService(session)
         try:
-            result = async_to_sync(service.check_qr_auth_status)(track_id)
-            return Response(result)
+            status_data = cache.get(f"qr_auth_status_{session.id}")
+            if status_data:
+                return Response(status_data)
+            else:
+                return Response({'status': 'error', 'message': 'Session expired or not found'})
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

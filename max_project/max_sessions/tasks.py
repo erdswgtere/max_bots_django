@@ -329,4 +329,151 @@ def cleanup_inactive_sessions(days_inactive: int = 90):
         raise
 
 
+@shared_task(bind=True)
+def run_qr_auth_flow(self, session_id: int):
+    """
+    Фоновая задача для проведения авторизации по QR-коду.
+    Удерживает WebSocket соединение открытым и опрашивает статус.
+    """
+    import json
+    import time
+    from .services import MaxClientService
+    from .models import MaxSession
+
+    task_id = self.request.id
+    logger.info(f"Starting run_qr_auth_flow for session {session_id} with task ID {task_id}")
+
+    # Устанавливаем текущую задачу как активную для этой сессии
+    cache.set(f"qr_auth_active_task_{session_id}", task_id, timeout=1200)
+    cache.set(f"qr_auth_status_{session_id}", {"status": "waiting"}, timeout=1200)
+
+    try:
+        session = MaxSession.objects.get(id=session_id)
+    except MaxSession.DoesNotExist:
+        logger.error(f"Session {session_id} not found in run_qr_auth_flow")
+        cache.set(f"qr_auth_status_{session_id}", {"status": "error", "message": "Session not found"}, timeout=60)
+        return
+
+    service = MaxClientService(session)
+
+    async def _run():
+        try:
+            # 1. Подключение к WebSocket
+            await service._connect()
+
+            # 2. Запрос QR-кода (Opcode 288)
+            qr_request_payload = {
+                "ver": 11,
+                "cmd": 0,
+                "seq": service._get_next_seq(),
+                "opcode": 288,
+                "payload": {}
+            }
+            logger.info(f"[{service.device_id}] Requesting QR code in Celery task...")
+            await service.websocket.send(json.dumps(qr_request_payload))
+
+            response = await service.websocket.recv()
+            response_data = json.loads(response)
+            logger.info(f"[{service.device_id}] QR response: {response}")
+
+            if response_data.get('payload', {}).get('error'):
+                raise ValueError(f"QR Error: {response_data['payload']['error']}")
+
+            payload = response_data['payload']
+            track_id = payload.get('trackId')
+            polling_interval = payload.get('pollingInterval', 5000) / 1000.0
+            expires_at = payload.get('expiresAt', 0)
+
+            # Сохраняем ссылку на QR в кэш для вьюхи
+            await cache.aset(f"qr_auth_data_{session_id}", payload, timeout=1200)
+
+            # 3. Цикл опроса статуса
+            while True:
+                # Проверяем, не перехвачена ли авторизация новой задачей
+                active_task = await cache.aget(f"qr_auth_active_task_{session_id}")
+                if active_task != task_id:
+                    logger.info(f"[{service.device_id}] Task {task_id} is obsolete (active: {active_task}), exiting.")
+                    break
+
+                # Проверяем истечение времени жизни QR
+                current_time_ms = int(time.time() * 1000)
+                if expires_at and current_time_ms > expires_at:
+                    logger.info(f"[{service.device_id}] QR code expired.")
+                    await cache.aset(f"qr_auth_status_{session_id}", {"status": "expired", "message": "QR expired"}, timeout=60)
+                    break
+
+                # Запрос статуса (Opcode 289)
+                check_payload = {
+                    "ver": 11,
+                    "cmd": 0,
+                    "seq": service._get_next_seq(),
+                    "opcode": 289,
+                    "payload": {
+                        "trackId": track_id
+                    }
+                }
+                logger.debug(f"[{service.device_id}] Checking QR status...")
+                await service.websocket.send(json.dumps(check_payload))
+
+                status_response = await service.websocket.recv()
+                status_data = json.loads(status_response)
+                logger.debug(f"[{service.device_id}] Status response: {status_response}")
+
+                # Обработка ошибки
+                if status_data.get('cmd') == 3:
+                    error_payload = status_data.get('payload', {})
+                    error_msg = error_payload.get('message', 'invalid trackId')
+                    logger.warning(f"[{service.device_id}] Status check returned error: {error_msg}")
+                    await cache.aset(f"qr_auth_status_{session_id}", {"status": "error", "message": error_msg}, timeout=60)
+                    break
+
+                status_payload = status_data.get('payload', {}).get('status', {})
+
+                if status_payload.get('loginAvailable'):
+                    # Завершение входа (Opcode 291)
+                    logger.info(f"[{service.device_id}] Login available! Finalizing auth...")
+                    login_payload = {
+                        "ver": 11,
+                        "cmd": 0,
+                        "seq": service._get_next_seq(),
+                        "opcode": 291,
+                        "payload": {
+                            "trackId": track_id
+                        }
+                    }
+                    await service.websocket.send(json.dumps(login_payload))
+
+                    login_response = await service.websocket.recv()
+                    login_data = json.loads(login_response)
+                    logger.info(f"[{service.device_id}] Login response: {login_data}")
+
+                    try:
+                        token = login_data['payload']['tokenAttrs']['LOGIN']['token']
+                        service.auth_token = token
+                        
+                        # Сохраняем токен в БД (используем asave внутри async функции)
+                        session.auth_token = token
+                        session.is_active = True
+                        await session.asave()
+
+                        await cache.aset(f"qr_auth_status_{session_id}", {"status": "success", "token": token}, timeout=60)
+                        logger.info(f"[{service.device_id}] Auth success!")
+                    except Exception as e:
+                        logger.error(f"[{service.device_id}] Failed to extract token: {e}")
+                        await cache.aset(f"qr_auth_status_{session_id}", {"status": "error", "message": "Failed to parse token"}, timeout=60)
+                    break
+
+                # Интервал опроса
+                await asyncio.sleep(polling_interval)
+
+        except Exception as e:
+            logger.error(f"[{service.device_id}] Error in QR auth loop: {e}", exc_info=True)
+            await cache.aset(f"qr_auth_status_{session_id}", {"status": "error", "message": str(e)}, timeout=60)
+        finally:
+            await service.close()
+
+    asyncio.run(_run())
+
+
+
 
