@@ -34,7 +34,7 @@ class MaxSessionViewSet(viewsets.ModelViewSet):
         
         try:
             # Запускаем Celery задачу
-            run_qr_auth_flow.delay(session.id)
+            run_qr_auth_flow.apply_async(args=[session.id], queue='default')
             
             # Ждем появления данных QR кода в кэше (до 5 секунд)
             cache_key = f"qr_auth_data_{session.id}"
